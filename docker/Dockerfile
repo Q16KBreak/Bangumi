@@ -1,38 +1,104 @@
 # syntax=docker/dockerfile:1.7
-# @Author: Q16KBreak
-#
-# Android 无线真机开发镜像：工具、配置切换、依赖相互隔离缓存；源码仅在运行时挂载。
-FROM --platform=linux/amd64 debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS toolchain
-SHELL ["/bin/bash", "-Eeuo", "pipefail", "-c"]
+# 一体化 Android 开发环境；源码、项目依赖与产物在运行时挂载。
+# 修改工具版本时同时检查项目的 Gradle / RN / NDK 兼容性。
+ARG BASE_IMAGE=debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
+ARG JDK_VERSION=17
+ARG NODE_VERSION=22.20.0
+ARG YARN_VERSION=1.22.22
+ARG ANDROID_TOOLS_BUILD=13114758
+ARG ANDROID_API=34
+ARG ANDROID_BUILD_TOOLS=33.0.0
+ARG ANDROID_LEGACY_BUILD_TOOLS=30.0.3
+ARG ANDROID_CMAKE=3.22.1
+ARG RN_NDK_VERSION=23.1.7779620
+ARG RUST_NDK_VERSION=27.1.12297006
+ARG PLATFORM_TOOLS_VERSION=37.0.1
+ARG RUSTUP_VERSION=1.28.2
+ARG RUST_VERSION=1.100.0
+ARG CARGO_NDK_VERSION=4.1.2
 
+# 系统工具 / JDK：其余下载阶段仅继承这层，而不互相依赖。
+FROM --platform=linux/amd64 ${BASE_IMAGE} AS base
+ARG JDK_VERSION
+SHELL ["/bin/bash", "-Eeuo", "pipefail", "-c"]
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
-    JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 \
-    ANDROID_HOME=/opt/android-sdk \
-    ANDROID_SDK_ROOT=/opt/android-sdk \
-    ANDROID_NDK_HOME=/opt/android-sdk/ndk/27.1.12297006 \
-    ANDROID_NDK_ROOT=/opt/android-sdk/ndk/27.1.12297006 \
-    RUSTUP_HOME=/opt/rustup \
-    CARGO_HOME=/opt/cargo \
-    RUSTUP_TOOLCHAIN=1.100.0 \
-    ADB_SERVER_SOCKET=tcp:127.0.0.1:5037
-ENV PATH=/opt/cargo/bin:/opt/android-sdk/cmdline-tools/19.0/bin:/opt/android-sdk/platform-tools:/opt/android-sdk/cmake/3.22.1/bin:${JAVA_HOME}/bin:${PATH}
-
-# Debian apt verifies signed repository metadata and package digests. Keep apt's
-# download cache; neither business files nor LOCAL_UID/GID invalidate this layer.
+    JAVA_HOME=/usr/lib/jvm/java-${JDK_VERSION}-openjdk-amd64
 RUN --mount=type=cache,id=bangumi-android-apt-cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,id=bangumi-android-apt-lists,target=/var/lib/apt/lists,sharing=locked \
-    rm -f /etc/apt/apt.conf.d/docker-clean && \
-    apt-get update && apt-get install -y --no-install-recommends \
-      bash build-essential ca-certificates curl git openjdk-17-jdk-headless \
-      perl pkg-config python3 unzip xz-utils zip
-COPY docker/install-toolchain.sh /usr/local/lib/bangumi/install-toolchain.sh
-RUN bash /usr/local/lib/bangumi/install-toolchain.sh
+    rm -f /etc/apt/apt.conf.d/docker-clean \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+       bash build-essential ca-certificates curl git "openjdk-${JDK_VERSION}-jdk-headless" \
+       perl pkg-config python3 unzip util-linux xz-utils zip
 
-# Lightweight stage: run the project's real Android switch WITHOUT node_modules.
-# No root package.json is needed: this isolated stage has no current environment
-# to back up. Include both the Android patch symlinks and their canonical targets.
-FROM toolchain AS android-config
+# Node：镜像配置阶段和最终开发镜像都复用此阶段。
+FROM base AS node
+ARG NODE_VERSION
+RUN --mount=type=tmpfs,target=/tmp/bangumi \
+    curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" -o /tmp/bangumi/node.tar.xz \
+    && tar -xJf /tmp/bangumi/node.tar.xz -C /usr/local --strip-components=1
+
+# Yarn：独立下载到 /opt，不让 Node 版本变化失效此阶段。
+FROM base AS yarn
+ARG YARN_VERSION
+RUN --mount=type=tmpfs,target=/tmp/bangumi \
+    curl -fsSL "https://registry.npmjs.org/yarn/-/yarn-${YARN_VERSION}.tgz" -o /tmp/bangumi/yarn.tgz \
+    && mkdir -p /opt/yarn \
+    && tar -xzf /tmp/bangumi/yarn.tgz -C /opt/yarn --strip-components=1
+
+# Android SDK / NDK：_latest 是带固定构建编号的官方文件名。
+FROM base AS android-sdk
+ARG ANDROID_TOOLS_BUILD
+ARG ANDROID_API
+ARG ANDROID_BUILD_TOOLS
+ARG ANDROID_LEGACY_BUILD_TOOLS
+ARG ANDROID_CMAKE
+ARG RN_NDK_VERSION
+ARG RUST_NDK_VERSION
+ARG PLATFORM_TOOLS_VERSION
+ENV ANDROID_HOME=/opt/android-sdk \
+    ANDROID_SDK_ROOT=/opt/android-sdk
+ENV PATH=/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:${JAVA_HOME}/bin:${PATH}
+RUN --mount=type=tmpfs,target=/tmp/bangumi \
+    curl -fsSL "https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_TOOLS_BUILD}_latest.zip" -o /tmp/bangumi/sdk.zip \
+    && unzip -q /tmp/bangumi/sdk.zip -d /tmp/bangumi \
+    && mkdir -p "$ANDROID_HOME/cmdline-tools" \
+    && mv /tmp/bangumi/cmdline-tools "$ANDROID_HOME/cmdline-tools/latest"
+
+# yes 的 SIGPIPE 不应掩盖 sdkmanager 自身的退出状态。
+RUN (set +o pipefail; yes | sdkmanager --sdk_root="$ANDROID_HOME" --licenses >/dev/null) \
+    && sdkmanager --sdk_root="$ANDROID_HOME" --install \
+       "platforms;android-${ANDROID_API}" "build-tools;${ANDROID_BUILD_TOOLS}" \
+       "build-tools;${ANDROID_LEGACY_BUILD_TOOLS}" "cmake;${ANDROID_CMAKE}" \
+       "ndk;${RN_NDK_VERSION}" "ndk;${RUST_NDK_VERSION}"
+
+# 固定 platform-tools；sdkmanager 可能已隐式安装浮动版本。
+RUN --mount=type=tmpfs,target=/tmp/bangumi \
+    curl -fsSL "https://dl.google.com/android/repository/platform-tools_r${PLATFORM_TOOLS_VERSION}-linux.zip" -o /tmp/bangumi/adb.zip \
+    && rm -rf /opt/android-sdk/platform-tools \
+    && unzip -q /tmp/bangumi/adb.zip -d "$ANDROID_HOME"
+
+# Rust / cargo-ndk：只启用当前支持的 ARM64 Android 构建目标。
+FROM base AS rust
+ARG RUSTUP_VERSION
+ARG RUST_VERSION
+ARG CARGO_NDK_VERSION
+ENV RUSTUP_HOME=/opt/rustup \
+    CARGO_HOME=/opt/cargo \
+    RUSTUP_TOOLCHAIN=${RUST_VERSION}
+ENV PATH=/opt/cargo/bin:${PATH}
+RUN --mount=type=tmpfs,target=/tmp/bangumi \
+    curl -fsSL "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/x86_64-unknown-linux-gnu/rustup-init" -o /tmp/bangumi/rustup-init \
+    && chmod +x /tmp/bangumi/rustup-init \
+    && /tmp/bangumi/rustup-init -y --no-modify-path --profile minimal \
+       --default-toolchain "$RUST_VERSION" --target aarch64-linux-android
+RUN --mount=type=cache,id=bangumi-tool-cargo-registry,target=/opt/cargo/registry,sharing=locked \
+    --mount=type=cache,id=bangumi-tool-cargo-git,target=/opt/cargo/git,sharing=locked \
+    cargo install cargo-ndk --version "$CARGO_NDK_VERSION" --locked --root /opt/cargo
+
+# Android 配置独立生成，不切换宿主默认的 iOS 环境。
+FROM node AS android-config
 WORKDIR /configuration
 COPY packages/env.js ./packages/env.js
 COPY packages/android/package.json ./packages/android/package.json
@@ -44,65 +110,65 @@ COPY packages/patches/react-native-android-widget+0.5.2.patch \
      packages/patches/react-native-smb+0.2.4.patch \
      packages/patches/react-native-tab-view+3.5.2.patch ./packages/patches/
 COPY babel.config.js app.json ./
-RUN node packages/env.js android && \
-    test ! -e node_modules && \
-    test "$(node -p 'require("./package.json").name')" = android && \
-    test "$(find patches -maxdepth 1 -name '*.patch' | wc -l)" = 6
+RUN node packages/env.js android
 
-FROM toolchain AS dependencies
-WORKDIR /workspace
-ENV CI=1
-# COPY uses output contents, not config-stage lineage: Babel/Expo/app changes do
-# not invalidate Yarn if the Android manifest and six patches remain unchanged.
-COPY --from=android-config /configuration/package.json ./package.json
-COPY --from=android-config /configuration/patches/ ./patches/
-COPY --from=android-config /configuration/packages/patches/ ./packages/patches/
-COPY eslint-rules/ ./eslint-rules/
-RUN --mount=type=cache,id=bangumi-android-yarn-v1,target=/var/cache/yarn,sharing=locked \
-    YARN_CACHE_FOLDER=/var/cache/yarn yarn install --no-lockfile --non-interactive && \
-    ./node_modules/.bin/patch-package --error-on-fail && \
-    test ! -e yarn.lock && test ! -e package-lock.json
-
-# Some legacy native modules still use AGP 4.2.x and require its minimum Build Tools.
-# Keep this small compatibility download independent from the expensive tool/dependency layers.
-FROM toolchain AS legacy-build-tools
-RUN sdkmanager --sdk_root="$ANDROID_HOME" --install 'build-tools;30.0.3'
-
-FROM toolchain AS dev
+# 开发用户与运行入口。项目 node_modules 由容器初始化写入真实仓库。
+FROM base AS dev
 ARG LOCAL_UID=1000
 ARG LOCAL_GID=1000
-WORKDIR /workspace
+ARG ANDROID_CMAKE
+ARG RUST_NDK_VERSION
+ARG RUST_VERSION
 ENV HOME=/home/dev \
     CARGO_HOME=/home/dev/.cargo \
+    RUSTUP_HOME=/opt/rustup \
+    RUSTUP_TOOLCHAIN=${RUST_VERSION} \
+    ANDROID_HOME=/opt/android-sdk \
+    ANDROID_SDK_ROOT=/opt/android-sdk \
+    ANDROID_NDK_HOME=/opt/android-sdk/ndk/${RUST_NDK_VERSION} \
+    ANDROID_NDK_ROOT=/opt/android-sdk/ndk/${RUST_NDK_VERSION} \
     GRADLE_USER_HOME=/home/dev/.gradle \
     XDG_CACHE_HOME=/home/dev/.cache \
+    ADB_SERVER_SOCKET=tcp:127.0.0.1:5037 \
     CI=1 \
-    EXPO_NO_TELEMETRY=1
+    EXPO_NO_TELEMETRY=1 \
+    BANGUMI_CONTAINER=1 \
+    BANGUMI_ADB_SERVER_MODE=container \
+    BANGUMI_ANDROID_ABI=arm64-v8a \
+    BANGUMI_BUILD_JOBS=4
+# /usr/local/bin 优先以便使用项目 ADB 客户端包装器。
+ENV PATH=/usr/local/bin:/opt/cargo/bin:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:/opt/android-sdk/cmake/${ANDROID_CMAKE}/bin:${JAVA_HOME}/bin:${PATH}
 
-# Delay identity to after expensive installs. Never recursively chown /workspace.
-# Empty, owned mount targets seed named volumes, even under the Android bind.
-RUN [[ "$LOCAL_UID" =~ ^[1-9][0-9]*$ && "$LOCAL_GID" =~ ^[1-9][0-9]*$ ]] && \
-    if ! getent group "$LOCAL_GID" >/dev/null; then groupadd --gid "$LOCAL_GID" dev; fi && \
-    useradd --uid "$LOCAL_UID" --gid "$LOCAL_GID" --create-home --shell /bin/bash dev && \
-    chown "$LOCAL_UID:$LOCAL_GID" /workspace && \
-    install -d -o "$LOCAL_UID" -g "$LOCAL_GID" \
-      /home/dev/.gradle /home/dev/.cargo /home/dev/.cargo/registry /home/dev/.cargo/git /home/dev/.cache \
-      /workspace/metro-cache /workspace/android/.gradle \
-      /workspace/android/rust/target /workspace/android/rust/openssl
+COPY --from=node /usr/local/ /usr/local/
+COPY --from=yarn /opt/yarn/ /opt/yarn/
+COPY --from=android-sdk /opt/android-sdk/ /opt/android-sdk/
+COPY --from=rust /opt/cargo/bin/ /opt/cargo/bin/
+COPY --from=rust /opt/rustup/ /opt/rustup/
+RUN ln -s /opt/yarn/bin/yarn /usr/local/bin/yarn \
+    && ln -s /opt/yarn/bin/yarnpkg /usr/local/bin/yarnpkg \
+    && if ! getent group "$LOCAL_GID" >/dev/null; then groupadd --gid "$LOCAL_GID" dev; fi \
+    && useradd --uid "$LOCAL_UID" --gid "$LOCAL_GID" --create-home --shell /bin/bash dev \
+    && install -d -m 0755 /usr/local/lib/bangumi \
+    && install -d -o "$LOCAL_UID" -g "$LOCAL_GID" \
+       /home/dev/.gradle /home/dev/.cargo /home/dev/.cargo/registry /home/dev/.cargo/git \
+       /home/dev/.cache /home/dev/.cache/yarn /home/dev/.android /workspace /repo
 
-# Gradle native dependencies write generated files inside node_modules. COPY's
-# ownership is limited to dependencies, rather than a project-wide chown pass.
-COPY --from=dependencies --chown=${LOCAL_UID}:${LOCAL_GID} /workspace/node_modules/ ./node_modules/
-COPY --from=dependencies /workspace/package.json ./package.json
-COPY --from=legacy-build-tools /opt/android-sdk/build-tools/30.0.3/ /opt/android-sdk/build-tools/30.0.3/
-# Final layers only: app/Babel edits and entrypoint edits keep dependency caches.
-COPY --from=android-config /configuration/babel.config.js /configuration/app.json ./
+COPY --from=android-config /configuration/package.json /workspace/package.json
+COPY --from=android-config /configuration/babel.config.js /configuration/app.json /workspace/
+COPY --from=android-config /configuration/patches/ /workspace/patches/
+COPY --from=android-config /configuration/packages/patches/ /workspace/packages/patches/
+COPY eslint-rules/ /workspace/eslint-rules/
+COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/bangumi-entrypoint
+COPY --chmod=0755 docker/develop.sh /usr/local/bin/bangumi
+COPY --chmod=0755 docker/adb.sh /usr/local/bin/adb
+COPY --chmod=0644 docker/adb-manager.sh /usr/local/lib/bangumi/adb-manager.sh
 COPY --chmod=0644 docker/adb-server.sh /usr/local/lib/bangumi/adb-server.sh
 COPY --chmod=0644 docker/start-metro.cjs /usr/local/lib/bangumi/start-metro.cjs
-COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/bangumi-entrypoint
 COPY --chmod=0644 docker/configure-debug-host.py /usr/local/lib/bangumi/configure-debug-host.py
 COPY --chmod=0644 docker/build-rust.sh /usr/local/lib/bangumi/build-rust.sh
+COPY --chmod=0644 docker/prepare-workspace.cjs /usr/local/lib/bangumi/prepare-workspace.cjs
 
+WORKDIR /repo
 USER dev
 ENTRYPOINT ["/usr/local/bin/bangumi-entrypoint"]
-CMD ["metro"]
+CMD ["workbench"]

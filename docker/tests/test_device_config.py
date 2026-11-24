@@ -163,42 +163,50 @@ class DeviceConfigTests(unittest.TestCase):
 
 
 class ContainerContractTests(unittest.TestCase):
-    def test_Compose仅保留宿主ADB和回环健康检查且不再传递LAN地址(self):
+    def test_Compose保留回环ADB且不映射端口或设备(self):
         text = (DOCKER / 'compose.yml').read_text()
         environment = re.search(r'^    environment:\n((?:^      .*\n)+)', text, re.M)
         self.assertIsNotNone(environment)
         self.assertIn('      ADB_SERVER_SOCKET: tcp:127.0.0.1:5037\n', environment[1])
+        self.assertIn('      BANGUMI_ADB_SERVER_MODE: ${BANGUMI_ADB_SERVER_MODE:-container}\n', environment[1])
         self.assertNotIn('BANGUMI_METRO_HOST', text)
         self.assertNotIn('REACT_NATIVE_PACKAGER_HOSTNAME', text)
         self.assertIn('    network_mode: host\n', text)
         self.assertNotRegex(text, re.compile(r'^    (?:ports|devices|privileged):', re.M))
-        self.assertIn("http://127.0.0.1:8081/status", text)
         self.assertNotIn('0.0.0.0:8081', text)
 
-    def test_entrypoint错误提示固定为回环8081(self):
+    def test_entrypoint和Metro固定使用回环8081(self):
         text = (DOCKER / 'entrypoint.sh').read_text()
+        metro = (DOCKER / 'start-metro.cjs').read_text()
         self.assertIn('loopback development server on 127.0.0.1:8081', text)
-        self.assertNotIn('LAN', text)
+        self.assertIn("host: '127.0.0.1'", metro)
         self.assertNotIn('BANGUMI_METRO_HOST', text)
+        self.assertNotIn('0.0.0.0:8081', text)
 
-    def test_helper与Rust脚本仅在运行层COPY不影响依赖层(self):
+    def test_helper与Rust脚本仅在运行层COPY不影响工具链(self):
         text = (DOCKER / 'Dockerfile').read_text()
         copies = [line for line in text.splitlines() if line.startswith('COPY ')]
         expected = 'COPY --chmod=0644 docker/configure-debug-host.py /usr/local/lib/bangumi/configure-debug-host.py'
         self.assertIn(expected, copies)
         self.assertIn('COPY --chmod=0644 docker/build-rust.sh /usr/local/lib/bangumi/build-rust.sh', copies)
         self.assertEqual(text.count('configure-debug-host.py'), 2)
-        prefix = text.split('FROM toolchain AS dev\n', 1)[0]
+        prefix = text.split('FROM base AS dev\n', 1)[0]
         self.assertNotIn('configure-debug-host', prefix)
         self.assertNotIn('build-rust.sh', prefix)
         self.assertNotIn('BANGUMI_METRO_HOST', text)
         self.assertIn('python3', prefix)
 
-    def test_构建白名单包含helper但不包含测试(self):
+    def test_构建白名单包含运行helper但不包含测试或源码(self):
         rules = (DOCKER / 'Dockerfile.dockerignore').read_text().splitlines()
-        self.assertIn('!docker/configure-debug-host.py', rules)
+        for name in ['configure-debug-host.py', 'build-rust.sh', 'adb-manager.sh',
+                     'adb-server.sh', 'adb.sh', 'develop.sh', 'prepare-workspace.cjs']:
+            self.assertIn('!docker/' + name, rules)
         self.assertIn('**/tests/**', rules)
         self.assertNotIn('!docker/tests/', rules)
+        self.assertNotIn('!docker/install-toolchain.sh', rules)
+        self.assertNotIn('!docker/editor-entrypoint.cjs', rules)
+        self.assertNotIn('!src/', rules)
+        self.assertNotIn('!android/', rules)
 
 
 if __name__ == '__main__':

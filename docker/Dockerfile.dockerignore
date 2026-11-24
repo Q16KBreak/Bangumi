@@ -6,10 +6,13 @@
 docker/**
 !docker/Dockerfile
 !docker/Dockerfile.dockerignore
-!docker/install-toolchain.sh
 !docker/entrypoint.sh
+!docker/develop.sh
+!docker/adb.sh
+!docker/adb-manager.sh
 !docker/adb-server.sh
 !docker/start-metro.cjs
+!docker/prepare-workspace.cjs
 !docker/configure-debug-host.py
 !docker/build-rust.sh
 !babel.config.js

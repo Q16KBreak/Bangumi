@@ -1,0 +1,32 @@
+{
+  "name": "Bangumi Android Dev",
+  "dockerComposeFile": ["../docker/compose.yml", "../docker/.generated/compose.yml"],
+  "service": "dev",
+  "runServices": ["dev"],
+  "workspaceFolder": "/repo",
+  "remoteUser": "dev",
+  "updateRemoteUserUID": false,
+  "overrideCommand": false,
+  "shutdownAction": "stopCompose",
+  "initializeCommand": ["bash", "${localWorkspaceFolder}/docker/devcontainer-host.sh"],
+  "postStartCommand": "/usr/local/bin/bangumi init",
+  "waitFor": "postStartCommand",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode"
+      ],
+      "settings": {
+        "typescript.tsdk": "node_modules/typescript/lib",
+        "typescript.enablePromptUseWorkspaceTsdk": true,
+        "eslint.workingDirectories": [{ "directory": "/repo" }],
+        "remote.autoForwardPorts": false,
+        "remote.restoreForwardedPorts": false,
+        "npm.autoDetect": "off",
+        "npm.scriptExplorerAction": "open",
+        "debug.javascript.autoAttachFilter": "disabled"
+      }
+    }
+  }
+}

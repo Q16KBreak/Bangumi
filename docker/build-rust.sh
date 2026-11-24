@@ -14,8 +14,8 @@ JNILIBS_DIR="$PROJECT_ROOT/android/app/src/main/jniLibs/arm64-v8a"
 OPENSSL_ROOT="$RUST_DIR/openssl"
 OPENSSL_SRC="$OPENSSL_ROOT/build/openssl-$OPENSSL_VERSION"
 OPENSSL_PREFIX="$OPENSSL_ROOT/install"
-# 固定使用镜像内的 NDK 27.1 (与 Gradle 的 23.1 无关)。
-NDK="${ANDROID_HOME:-/opt/android-sdk}/ndk/27.1.12297006"
+# 使用镜像指定的 Rust NDK，独立于 Gradle 的 RN NDK。
+NDK="${ANDROID_NDK_HOME:-${ANDROID_HOME:-/opt/android-sdk}/ndk/27.1.12297006}"
 TOOLCHAIN_BIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
 
 log() { printf '[build-rust] %s\n' "$*"; }

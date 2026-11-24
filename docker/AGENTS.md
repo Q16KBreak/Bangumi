@@ -1,95 +1,65 @@
 # Docker 开发：智能体指南
 
-本文件约束本目录及子目录的容器维护工作，不替代上层指令，也不授予安装、提权、设备操作或 Git 写操作权限。
-
-## 先读什么
-
-- [README.md](<README.md>)：从全新系统开始的安装、配对、构建、缓存与排障流程。
-- [VERIFICATION.md](<VERIFICATION.md>)：历史验收及支持边界；历史成功不等于本轮修改已经通过。
-- 只读取当前任务涉及的脚本，先检查工作区和实际运行态，不根据旧聊天或日志恢复环境。
+本文件约束本目录及子目录的容器维护工作，不替代上层指令，也不授予安装、提权、设备操作或 Git 写操作权限。先读[使用说明](<README.md>)和[验收记录](<VERIFICATION.md>)，检查当前工作区和运行态，不把历史成功当作本轮验证。
 
 ## 修改边界
 
-- 容器相关改动默认限于 `docker/`；确需修改外部脚本、业务源码或文档时，先取得当次明确授权。
-- 容器说明和验收更新写在本目录，不顺手修改外部架构/测试文档。
-- 不修改、生成或删除锁文件，不在宿主执行项目依赖安装、原生同步或环境切换。
-- 不把仓库默认 iOS 配置切成 Android；Android 配置准备只在镜像独立阶段进行。
-- 默认不新增国内镜像源或代理配置，不关闭 TLS 校验；网络适配须由当次任务明确提出。
+- 容器相关改动默认限于 `docker/`；标准 VS Code 入口 [devcontainer.json](<../.devcontainer/devcontainer.json>) 是唯一目录外例外。其他外部脚本、业务源码或文档需当次明确授权。
+- 不修改、生成或删除锁文件，不在宿主执行项目依赖安装、原生同步或环境切换。镜像内或真实仓库依赖安装、真实设备/构建按当次授权执行。
+- 仓库默认 iOS 清单、Expo/Babel 配置不切换；Android 配置只在镜像独立阶段准备。容器内 Android 依赖放仓库 `node_modules`，首次遇到非空无管理标记目录必须拒绝，不自动删除/覆盖。
+- 默认不新增镜像源或代理、不关闭 TLS。不得因便于测试自动清缓存；本次用户对缓存清理的授权不是长期授权。
+- 不改 Git 暂存区、提交、推送、stash 或改写历史；需要推送时由用户使用既有 SSH 443 和 rbw-agent。不得将凭据、配对码、本机标识或编译产物提交。
 
 ## 文件职责
 
 | 文件 | 职责 |
 | --- | --- |
-| [Dockerfile](<Dockerfile>) | 工具链、Android 配置、依赖、开发运行层及缓存边界 |
-| [Dockerfile.dockerignore](<Dockerfile.dockerignore>) | 构建上下文白名单；新增镜像输入须同步检查 |
-| [install-toolchain.sh](<install-toolchain.sh>) | 固定工具版本、下载及现有摘要校验 |
-| [compose.yml](<compose.yml>) | host 网络、选择性绑定、非 root 身份及持久缓存 |
-| [android-debug.sh](<android-debug.sh>) | 宿主入口：配对、选设备、构建安装、配置偏好和 reverse |
-| [adb-server.sh](<adb-server.sh>) | 只读探测共享 ADB server 协议，供宿主和容器使用 |
-| [entrypoint.sh](<entrypoint.sh>) | 容器内生成 Debug 配置，运行 Metro、构建或 shell |
-| [start-metro.cjs](<start-metro.cjs>) | 旧 Expo CLI 的 JS 入口、回环绑定和 watch 适配 |
-| [build-rust.sh](<build-rust.sh>) | Linux 容器专用 OpenSSL/Rust/JNI 构建，不安装工具链 |
-| [configure-debug-host.py](<configure-debug-host.py>) | 仅转换开发包的私有调试地址，保留其他偏好 |
-| [tests/](<tests/>) | Python 标准库和 Node 内置 test/VM 回归 |
+| [Dockerfile](<Dockerfile>) | 顶部 ARG 集中版本，系统/JDK base 与独立工具阶段，最终只复制产物到 dev；不复制安装脚本再执行 |
+| [Dockerfile.dockerignore](<Dockerfile.dockerignore>) | 镜像构建上下文白名单与敏感文件保护 |
+| [compose.yml](<compose.yml>) | 单一 `dev` 服务、仓库与运行视图挂载、host 网络、五个用户级卷 |
+| [devcontainer.json](<../.devcontainer/devcontainer.json>) | VS Code 标准入口：宿主 initialize、单容器、postStart 等待初始化 |
+| [devcontainer-host.sh](<devcontainer-host.sh>) | 宿主 UID/GID、镜像输入指纹、缺失时构建镜像及本机 Compose 覆盖 |
+| [prepare-workspace.cjs](<prepare-workspace.cjs>) | 受标记约束的 Android 依赖安装/复用、补丁与共用入口同步 |
+| [entrypoint.sh](<entrypoint.sh>) | workbench、运行环境检查、Metro 和 Rust/Gradle 构建 |
+| [develop.sh](<develop.sh>) | 容器内 `bangumi`：初始化、设备选择、构建安装、受管 Metro、日志 |
+| [adb.sh](<adb.sh>)、[adb-manager.sh](<adb-manager.sh>)、[adb-server.sh](<adb-server.sh>) | ADB 参数保护、容器/host server 归属与只读协议探测 |
+| [android-debug.sh](<android-debug.sh>) | 可选宿主兼容转发，不要求宿主 ADB；正常开发使用容器终端 |
+| [start-metro.cjs](<start-metro.cjs>) | 旧 Expo CLI 回环绑定与 watch 适配 |
+| [build-rust.sh](<build-rust.sh>) | 容器 Linux OpenSSL/Rust/JNI 构建，使用预装工具 |
+| [configure-debug-host.py](<configure-debug-host.py>) | 仅转换开发包私有调试地址 |
+| [tests/](<tests/>) | Python 标准库、Node 内置 test/VM mock 回归 |
 
-## 不要破坏的架构
+## 不要破坏的一体化架构
 
-- 支持 Linux amd64 宿主、Android 11+ ARM64 真机；不默认扩展到 iOS、模拟器或 Docker Desktop。
-- `/workspace` 是镜像内的 Android 工作目录，不是宿主仓库的完整副本。
-- 不直接用整仓库绑定覆盖 `/workspace`：这会遮住镜像内的 Android 配置和 `node_modules`。
-- 源码和原生工程选择性挂载；当前 JS 源码对容器只读，Android 工程可写，Git 在宿主操作。
-- 当前是构建容器，不是完整 IDE Dev Container；不能声称宿主 IDE 自动拥有容器依赖或完整类型检查。
-- RN 与 Rust/OpenSSL 的 NDK 分别为 23.1 和 27.1；版本细节以安装脚本、构建入口和工程配置为准，不混用或擅自升级为 latest。
-- Rust 入口保持精简 Linux 流程，保留原有 `no-shared`、线程检查和 Cargo `--locked`，不要重新扩成跨平台安装/通用加固框架。
+- 只支持 Linux amd64 宿主、Android 11+ ARM64 真机；不默认扩展 iOS、USB、模拟器或 Docker Desktop。`BANGUMI_ANDROID_ABI` 仅 `arm64-v8a`，x86_64 接口未实现，不能将设备可见误称 APK 可运行。
+- 唯一 `dev` 容器完整读写挂载真实仓库 `/repo`；`/workspace` 保存镜像生成的 Android package/app/Babel/patches 与 ESLint 运行配置，不能用整仓挂载覆盖。源码、Android 工程、`node_modules`、Metro 缓存共用同一宿主文件；根入口/TS/Metro 配置在运行准备时复制，保存后重启 Metro 刷新。
+- 真实仓库保留 `node_modules`、Android `.gradle`、Rust `target`/OpenSSL 和 Metro 缓存；仅 Gradle 用户缓存、Cargo registry/git、Yarn 缓存及容器 ADB 状态使用五个卷。`postStart` 每次启动运行 `bangumi init`，依赖输入未变时复用现有产物，失败后可重新启动重试；受管状态保存在 `node_modules/.bangumi-android-dependencies/state.json`。Android 清单、Expo/Babel、补丁及 ESLint 插件是镜像快照，改这些输入后须重建容器以更新指纹镜像，再由 `postStart` 初始化；旧镜像中的 `bangumi init` 不能获取新快照。
+- 自动初始化按 Dockerfile 和实际镜像输入哈希+UID/GID 计算本地镜像标签；缺失时一次构建，再生成本机 Compose 覆盖。Compose 服务本身无 `build`，防止 VS Code 临时 Dockerfile 触发第二次完整构建。
+- 语言服务使用 Android 依赖，根清单仍是 iOS 默认；不运行根 `yarn env` 或直接根项目启动脚本，不承诺全量类型零错误或未经验证的断点调试。完整仓库中未跟踪和忽略的敏感文件对容器/扩展可见；不承诺 VS Code 不会按个人配置共享凭据。
+- RN 与 Rust/OpenSSL 分别使用 NDK 23.1 和 27.1；以 Dockerfile、构建入口和工程配置为准。保留 Rust 的 `no-shared`、线程检查和 Cargo `--locked`。
 
-## ADB、网络与手机
+## ADB、手机与网络
 
-- 保留 `network_mode: host`，共享宿主 `ADB_SERVER_SOCKET=tcp:127.0.0.1:5037`。
-- Metro 仅监听 `127.0.0.1:8081`，手机通过所选设备的 `adb reverse tcp:8081 tcp:8081` 访问；不恢复 LAN 自动选路或双模式。
-- 宿主客户端固定 platform-tools 37.0.1；server 探测只确认协议 41，不能据此识别完整发行版。
-- 不自动 `kill-server`、启用 `adb -a`、发布 5037/8081、挂载私钥/USB/Docker socket，或使用 privileged。
-- 显式选择设备；mDNS 名称可能含空格，同一手机可能同时出现 IP 和 mDNS 两条记录，不能随意换目标。
-- 配对码只在用户的交互终端输入，不写进参数、聊天、脚本或日志。
-- 只修改开发包 `com.czy0729.bangumi.dev` 的调试偏好；不卸载、清数据、改正式包或手机全局网络设置。
-- 真机验收需用户保持解锁、亮屏、应用前台；ADB 在线不代表应用未被 Doze/后台策略断网，不用 root、唤醒或关闭省电策略绕过。
-- 容器运行时的 host 网络不等于镜像构建阶段也用 host；下载故障先区分宿主、daemon、构建 RUN 和运行容器。
+- 默认容器内 ADB Server 使用不带 `-a` 的 `-L tcp:5037`，预期监听 `127.0.0.1:5037`，客户端使用 `tcp:127.0.0.1:5037`；使用自己的 `/home/dev/.android` 命名卷。若端口已被其他服务占用则失败，不自动替换。`BANGUMI_ADB_SERVER_MODE=host` 仅为可选宿主模拟器后端，只读探测已有 server，不启动/停止/替换；宿主负责兼容版本。
+- 保留 `network_mode: host`、Metro `127.0.0.1:8081` 和所选设备 `adb reverse`。不启用 `adb -a`、发布 5037/8081、主动挂宿主私钥/USB/Docker socket 或使用 privileged。不要恢复 LAN 自动选路。
+- 显式选择设备；mDNS 名称可能含空格，同一设备可能有 IP 和 mDNS 多条记录。配对码只在用户交互终端输入，不写参数、聊天、脚本或日志。
+- 只操作开发包 `com.czy0729.bangumi.dev` 的私有调试偏好；不卸载、清数据、改正式包或手机全局网络。真机验收由用户保持解锁、亮屏、前台；不使用 root 或修改省电策略绕过。
+- 模拟器目前未验收，x86_64 的 Gradle/Rust/OpenSSL 构建未实现；VMware 内 Ubuntu 如需模拟器还要确认嵌套虚拟化与 KVM。
 
-## 操作与缓存
+## 开发、缓存与验收
 
-以下示例在仓库根目录执行，仅供已获授权的任务使用；设备地址需替换。
+在 VS Code 容器终端使用 `bangumi init/build/up/metro/devices/start/install/logs/down` 或交互 `adb pair`。`bangumi down` 仅停止自己管理的 Metro；关闭 VS Code 按 Dev Container 配置停止 Compose，保留仓库和卷，不影响 host 模式下的宿主 ADB。旧双容器迁移先保存代码、只停止旧 `editor`，不清旧镜像或卷。
 
-```bash
-# 无 Docker socket 权限时设置；不要 sudo 运行整个宿主脚本或 chmod socket。
-export DOCKER_USE_SUDO=1
-bash docker/android-debug.sh build-image
-bash docker/android-debug.sh up
-bash docker/android-debug.sh build                 # 无需手机或 ADB server
-bash docker/android-debug.sh start 手机IP:连接端口  # 包含构建、安装、偏好、reverse 和启动
-```
-
-- 首次长时间编译尽量先 `up`、`build`，准备好后再请用户保持手机亮屏进行 `start`。
-- JS 保存走热更新；Java/Rust 修改重新构建安装；依赖、补丁、镜像配置或镜像内脚本变化才重建镜像。
-- 工具链脚本变化可能影响后续依赖阶段；运行脚本留在后部 COPY，不能为方便把易变输入提前到昂贵安装层。
-- `build` 优先复用运行容器；`node_modules` 内原生增量产物在容器可写层，重建会丢失，但不等于重新安装依赖。
-- Gradle/Cargo/OpenSSL/Metro 卷与 BuildKit 下载/层缓存不同；不要默认清卷、全局 prune 或使用 `--no-cache`。
-- 使用 `LOCAL_UID/LOCAL_GID` 和既有缓存目录；不靠 root 运行、递归 chown 整仓库或放宽容器隔离解决权限问题。
-
-## 验证与交付
-
-先做与修改相关的静态/mock 检查，不安装宿主项目依赖；以下命令不触碰真实设备。
+先做与修改相关的静态/mock 检查，不安装宿主项目依赖；以下不触碰真实设备：
 
 ```bash
 python3 -B -m unittest discover -s docker/tests -p 'test_*.py' -v
-node --test docker/tests/test_metro.cjs
-bash -n docker/*.sh
+node --test docker/tests/test_*.cjs
+(for script in docker/*.sh; do bash -n "$script" || exit; done)
 docker compose -f docker/compose.yml config --quiet
 ```
 
-- 真实镜像/原生构建按当次授权执行；日志中区分依赖安装、依赖复制、缓存命中和实际编译。
-- 真机验收区分 Metro `/status`、实际 JS 冷启动和不重装的热更新；日志窗口使用毫秒精度，必要时核对原生 PID。
-- 临时源码标记、探针和容器内覆盖必须撤回；不能靠临时补丁通过后交付另一份源码。
-- `validation/` 是被忽略的本机历史实验，不是默认执行入口；不要自动运行其中可能恢复旧配置的脚本。
-- 验收记录写本轮实际结果，不抄旧计数，不把 mock、语法检查或历史日志称为新系统/真机实测。
-- 未获当次明确授权，不暂存、提交、推送、stash 或改写历史；获得提交授权后，概述使用中文。
-- 推送使用既有 SSH 443 配置及 rbw-agent；锁定时请用户解锁，不改用只读 GitHub token、不导出私钥。
-- 提交前检查新增文件及待推送历史，不纳入密钥、配对信息、本机标识、日志、截图或编译产物。
+- 配置测试应覆盖单服务、真实仓库与运行视图、五卷、无 Compose build、输入指纹/UID 和项目名、旧依赖拒绝/受管复用、ADB 归属及端口冲突；不启动真实 Docker 或设备的 mock 不能视为真机验收。
+- 工具链 Dockerfile、运行脚本和指纹输入保持一致；变更会触发镜像更新，不能把源码或私密配置无故加进构建上下文。不要把构建安装塞回单独 COPY 的安装脚本。
+- 真实镜像/原生构建按当次授权执行；日志中区分依赖安装、缓存命中和实际编译。真机区分 Metro `/status`、实际 JS 冷启动和不重装热更新；必要时核对原生 PID。
+- `validation/` 为忽略的历史实验，不自动运行。临时探针必须撤回；[验收记录](<VERIFICATION.md>)只记录本轮实际结果，后续锁刷新、原生同步及业务/发布真机回归由用户自理。

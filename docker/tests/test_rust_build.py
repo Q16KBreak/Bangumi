@@ -150,6 +150,17 @@ class RustBuildScriptTests(unittest.TestCase):
         self.assertFalse((self.source / 'configure.args').exists())
         self.assertTrue(self._calls('cargo'))
 
+    def test_Rust_NDK使用镜像环境配置而不绑定默认版本目录(self):
+        custom = self.root / 'custom rust ndk'
+        shutil.copytree(self.ndk, custom)
+        self._command(custom / 'toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar', r'''
+            printf 'custom-ndk-selected\n' >> "$FAKE_LOG"
+            printf 'object-bytes\n'
+        ''')
+        result = self._run(ANDROID_NDK_HOME=str(custom))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self._calls('custom-ndk-selected'), ['custom-ndk-selected'])
+
     def test_并发数优先使用BANGUMI_BUILD_JOBS(self):
         result = self._run(BANGUMI_BUILD_JOBS='3', FAKE_NPROC='9')
         self.assertEqual(result.returncode, 0, result.stderr)

@@ -2,3 +2,5 @@
 __pycache__/
 # 本机实际构建与真机验收日志。
 validation/
+# 本机 UID/GID 和输入指纹生成的 Compose 配置，不作为源码提交。
+.generated/
