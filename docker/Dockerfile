@@ -77,11 +77,10 @@ RUN --mount=type=tmpfs,target=/tmp/bangumi \
     && rm -rf /opt/android-sdk/platform-tools \
     && unzip -q /tmp/bangumi/adb.zip -d "$ANDROID_HOME"
 
-# Rust / cargo-ndk：只启用当前支持的 ARM64 Android 构建目标。
+# Rust：只启用当前支持的 ARM64 Android 构建目标。
 FROM base AS rust
 ARG RUSTUP_VERSION
 ARG RUST_VERSION
-ARG CARGO_NDK_VERSION
 ENV RUSTUP_HOME=/opt/rustup \
     CARGO_HOME=/opt/cargo \
     RUSTUP_TOOLCHAIN=${RUST_VERSION}
@@ -91,9 +90,14 @@ RUN --mount=type=tmpfs,target=/tmp/bangumi \
     && chmod +x /tmp/bangumi/rustup-init \
     && /tmp/bangumi/rustup-init -y --no-modify-path --profile minimal \
        --default-toolchain "$RUST_VERSION" --target aarch64-linux-android
-RUN --mount=type=cache,id=bangumi-tool-cargo-registry,target=/opt/cargo/registry,sharing=locked \
-    --mount=type=cache,id=bangumi-tool-cargo-git,target=/opt/cargo/git,sharing=locked \
-    cargo install cargo-ndk --version "$CARGO_NDK_VERSION" --locked --root /opt/cargo
+
+# cargo-ndk：使用官方预编译包，不依赖 Rust 阶段编译安装。
+FROM base AS cargo-ndk
+ARG CARGO_NDK_VERSION
+RUN --mount=type=tmpfs,target=/tmp/bangumi \
+    curl -fsSL "https://github.com/bbqsrc/cargo-ndk/releases/download/v${CARGO_NDK_VERSION}/cargo-ndk-x86_64-unknown-linux-musl-v${CARGO_NDK_VERSION}.tgz" -o /tmp/bangumi/cargo-ndk.tgz \
+    && mkdir -p /opt/cargo-ndk \
+    && tar -xzf /tmp/bangumi/cargo-ndk.tgz -C /opt/cargo-ndk --strip-components=1
 
 # Android 配置独立生成，不切换宿主默认的 iOS 环境。
 FROM node AS android-config
@@ -143,6 +147,7 @@ COPY --from=yarn /opt/yarn/ /opt/yarn/
 COPY --from=android-sdk --chown=${LOCAL_UID}:${LOCAL_GID} /opt/android-sdk/ /opt/android-sdk/
 COPY --from=rust /opt/cargo/bin/ /opt/cargo/bin/
 COPY --from=rust /opt/rustup/ /opt/rustup/
+COPY --from=cargo-ndk /opt/cargo-ndk/ /opt/cargo/bin/
 RUN ln -s /opt/yarn/bin/yarn /usr/local/bin/yarn \
     && ln -s /opt/yarn/bin/yarnpkg /usr/local/bin/yarnpkg \
     && if ! getent group "$LOCAL_GID" >/dev/null; then groupadd --gid "$LOCAL_GID" dev; fi \
