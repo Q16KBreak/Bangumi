@@ -1,0 +1,95 @@
+# @Author: Q16KBreak
+#
+# Linux amd64 无线真机开发；只共享宿主网络，不共享 ADB 密钥、USB 或 Docker socket。
+name: bangumi-android-dev
+
+services:
+  dev:
+    image: bangumi-android-dev:local
+    platform: linux/amd64
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: dev
+      args:
+        LOCAL_UID: ${LOCAL_UID:-1000}
+        LOCAL_GID: ${LOCAL_GID:-1000}
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    working_dir: /workspace
+    init: true
+    network_mode: host
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      ADB_SERVER_SOCKET: tcp:127.0.0.1:5037
+      BANGUMI_BUILD_JOBS: ${BANGUMI_BUILD_JOBS:-4}
+    command: [metro]
+    volumes:
+      - type: bind
+        source: ../src
+        target: /workspace/src
+        read_only: true
+        bind:
+          create_host_path: false
+      # Keep native edits, generated JNI libraries and app/build APKs on the host.
+      - type: bind
+        source: ../android
+        target: /workspace/android
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../index.js
+        target: /workspace/index.js
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../index.android.js
+        target: /workspace/index.android.js
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../tsconfig.json
+        target: /workspace/tsconfig.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../metro.config.js
+        target: /workspace/metro.config.js
+        read_only: true
+        bind:
+          create_host_path: false
+      - gradle-home:/home/dev/.gradle
+      - gradle-project:/workspace/android/.gradle
+      - cargo-registry:/home/dev/.cargo/registry
+      - cargo-git:/home/dev/.cargo/git
+      - cargo-target:/workspace/android/rust/target
+      - openssl:/workspace/android/rust/openssl
+      - metro:/workspace/metro-cache
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          const http=require('node:http');
+          const req=http.get('http://127.0.0.1:8081/status',res=>{
+          let body='';res.on('data',chunk=>body+=chunk);
+          res.on('end',()=>process.exit(res.statusCode===200&&body.trim()==='packager-status:running'?0:1));});
+          req.setTimeout(3000,()=>req.destroy());req.on('error',()=>process.exit(1));
+      start_period: 60s
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  gradle-home:
+  gradle-project:
+  cargo-registry:
+  cargo-git:
+  cargo-target:
+  openssl:
+  metro:
