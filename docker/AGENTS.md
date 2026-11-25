@@ -37,7 +37,7 @@
 - 自动初始化按 Dockerfile 和实际镜像输入哈希+UID/GID 计算本地镜像标签；缺失时一次构建，再生成本机 Compose 覆盖。Compose 服务本身无 `build`，防止 VS Code 临时 Dockerfile 触发第二次完整构建。
 - 语言服务使用 Android 依赖，根清单仍是 iOS 默认；不运行根 `yarn env` 或直接根项目启动脚本，不承诺全量类型零错误或未经验证的断点调试。完整仓库中未跟踪和忽略的敏感文件对容器/扩展可见；不承诺 VS Code 不会按个人配置共享凭据。
 - RN 与 Rust/OpenSSL 分别使用 NDK 23.1 和 30.0；以 Dockerfile、构建入口和工程配置为准。保留 Rust 的 `no-shared`、线程检查和 Cargo `--locked`；OpenSSL 缓存标记须跟随 NDK 路径与 OpenSSL 版本，升级不能误复用旧编译器产物。
-- 正常原生配置由准备器生成，标准本地属性选择 SDK/CMake，Gradle 属性提供根 Build Tools 版本；保留用户自管配置，不为了测试修改依赖源码或注入 CMake 策略绕过。JDK 25/21 与 CMake 4 已有实际失败证据，不在 Dockerfile/入口增加版本组合预检。
+- Build Tools 统一为 30.0.3，生产 SDK 仅安装这一版，不再设置 legacy 或分配不同模块使用 37。正常原生配置由准备器生成，标准本地属性选择 SDK/CMake，Gradle 属性提供统一的根 Build Tools 版本；保留用户自管配置，不为了测试修改依赖源码或注入 CMake 策略绕过。JDK 25/21 与 CMake 4 已有实际失败证据，不在 Dockerfile/入口增加版本组合预检。
 - 工具链的真实升级验收仅显式运行 `tests/` 中独立流程；不得塞入 Dockerfile、生产入口或普通 postStart。官方 Features 必须先评估构建期依赖、重复安装、PATH/缓存及隐含权限，不默认放宽现有安全配置。
 
 ## ADB、手机与网络

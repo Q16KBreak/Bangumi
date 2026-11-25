@@ -194,7 +194,7 @@ test('标记损坏或为符号链接时拒绝修改现有内容', t => {
 const nativeEnvironment = {
   BANGUMI_BUILD_JOBS: '4',
   BANGUMI_ANDROID_ABI: 'arm64-v8a',
-  BANGUMI_ANDROID_BUILD_TOOLS: '37.0.0',
+  BANGUMI_ANDROID_BUILD_TOOLS: '30.0.3',
   ANDROID_HOME: '/opt/android-sdk',
   BANGUMI_CMAKE_DIR: '/opt/android-sdk/cmake/3.31.6'
 }
@@ -214,7 +214,7 @@ org.gradle.caching=true
 org.gradle.parallel=true
 android.useAndroidX=true
 android.enableJetifier=true
-android.buildToolsVersion=37.0.0
+android.buildToolsVersion=30.0.3
 reactNativeArchitectures=arm64-v8a
 newArchEnabled=false
 hermesEnabled=true
@@ -237,7 +237,7 @@ test('旧生成标记的Gradle配置可升级，不变时两个文件的时间�
   const local = path.join(f.workspace, 'android', 'local.properties')
   fs.writeFileSync(gradle, `${gradleMarker}org.gradle.workers.max=2\n`)
   configureNative({ runtime: f.workspace, environment: nativeEnvironment })
-  assert.match(fs.readFileSync(gradle, 'utf8'), /android\.buildToolsVersion=37\.0\.0\n/)
+  assert.match(fs.readFileSync(gradle, 'utf8'), /android\.buildToolsVersion=30\.0\.3\n/)
   const old = new Date('2020-01-01T00:00:00Z')
   fs.utimesSync(gradle, old, old)
   fs.utimesSync(local, old, old)
@@ -345,7 +345,7 @@ test('首次并发创建相同的受管配置时复用，不覆盖现有文件',
     fs.writeFileSync = write
   }
   assert.equal(injected, true)
-  assert.match(fs.readFileSync(target, 'utf8'), /android\.buildToolsVersion=37\.0\.0\n/)
+  assert.match(fs.readFileSync(target, 'utf8'), /android\.buildToolsVersion=30\.0\.3\n/)
   assert.deepEqual(fs.readdirSync(android).sort(), ['gradle.properties', 'local.properties'])
 })
 

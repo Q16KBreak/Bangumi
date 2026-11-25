@@ -7,8 +7,7 @@ ARG NODE_VERSION=26.13.1
 ARG YARN_VERSION=1.22.22
 ARG ANDROID_TOOLS_BUILD=16111833
 ARG ANDROID_API=34
-ARG ANDROID_BUILD_TOOLS=37.0.0
-ARG ANDROID_LEGACY_BUILD_TOOLS=30.0.3
+ARG ANDROID_BUILD_TOOLS=30.0.3
 ARG ANDROID_CMAKE=3.31.6
 ARG RN_NDK_VERSION=23.1.7779620
 ARG RUST_NDK_VERSION=30.0.16248370
@@ -52,7 +51,6 @@ FROM base AS android-sdk
 ARG ANDROID_TOOLS_BUILD
 ARG ANDROID_API
 ARG ANDROID_BUILD_TOOLS
-ARG ANDROID_LEGACY_BUILD_TOOLS
 ARG ANDROID_CMAKE
 ARG RN_NDK_VERSION
 ARG RUST_NDK_VERSION
@@ -70,7 +68,7 @@ RUN --mount=type=tmpfs,target=/tmp/bangumi \
 RUN (set +o pipefail; yes | sdkmanager --sdk_root="$ANDROID_HOME" --licenses >/dev/null) \
     && sdkmanager --sdk_root="$ANDROID_HOME" --install \
        "platforms;android-${ANDROID_API}" "build-tools;${ANDROID_BUILD_TOOLS}" \
-       "build-tools;${ANDROID_LEGACY_BUILD_TOOLS}" "cmake;${ANDROID_CMAKE}" \
+       "cmake;${ANDROID_CMAKE}" \
        "ndk;${RN_NDK_VERSION}" "ndk;${RUST_NDK_VERSION}"
 
 # 固定 platform-tools；sdkmanager 可能已隐式安装浮动版本。
@@ -106,9 +104,7 @@ COPY packages/android/patches/ ./packages/android/patches/
 COPY packages/patches/react-native-android-widget+0.5.2.patch \
      packages/patches/react-native-pager-view+6.2.0.patch \
      packages/patches/react-native-realtimeblurview+1.1.3.patch \
-     packages/patches/react-native-render-html+4.1.1.patch \
-     packages/patches/react-native-smb+0.2.4.patch \
-     packages/patches/react-native-tab-view+3.5.2.patch ./packages/patches/
+     packages/patches/react-native-smb+0.2.4.patch ./packages/patches/
 COPY babel.config.js app.json ./
 RUN node packages/env.js android
 

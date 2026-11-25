@@ -62,8 +62,7 @@ inputs=(
 )
 patches=(
   react-native-android-widget+0.5.2.patch react-native-pager-view+6.2.0.patch
-  react-native-realtimeblurview+1.1.3.patch react-native-render-html+4.1.1.patch
-  react-native-smb+0.2.4.patch react-native-tab-view+3.5.2.patch
+  react-native-realtimeblurview+1.1.3.patch react-native-smb+0.2.4.patch
 )
 for patch in "${patches[@]}"; do
   inputs+=("packages/android/patches/$patch" "packages/patches/$patch")

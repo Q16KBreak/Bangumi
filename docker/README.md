@@ -119,9 +119,9 @@ bangumi help
 | CMake | 3.31.6；4.1.2 实际被旧 Expo 的最低版本声明拒绝，未添加策略绕过 |
 | Rust / rustup / cargo-ndk | 1.100.0 / 1.29.3 / 4.1.2 |
 | Rust NDK / RN NDK | 30.0.16248370 / 工程固定的 23.1.7779620，二者独立 |
-| Build Tools / 编译平台 | 提供 37.0.0 与旧 AGP 必需的 30.0.3；编译平台保持工程 API 34 |
+| Build Tools / 编译平台 | 统一使用 30.0.3，只安装这一版；编译平台保持工程 API 34 |
 
-Build Tools 37 通过工程已有属性供引用根配置的库使用；应用及部分库仍使用 AGP 默认的 30.0.3，不能称为全项目统一 37。正常的 Android 调试/本地构建配置由[工作区准备器](<prepare-workspace.cjs>)生成，选择容器 SDK、CMake 和根 Build Tools 属性；已存在的用户自管配置不会被覆盖。SDK 归开发用户所有，允许官方管理器写入正常状态与锁文件。OpenSSL 缓存记录 NDK 路径和 OpenSSL 版本，更换工具链时重编，不误用旧编译器产物。最终镜像及真机结果分别记录于[验收记录](<VERIFICATION.md>)。
+Build Tools 统一为 30.0.3：工程根属性与 AGP 默认值一致，不再分新版和 legacy，也不安装 37。正常的 Android 调试/本地构建配置由[工作区准备器](<prepare-workspace.cjs>)生成，选择容器 SDK、CMake 和根 Build Tools 属性；已存在的用户自管配置不会被覆盖。SDK 归开发用户所有，允许官方管理器写入正常状态与锁文件。OpenSSL 缓存记录 NDK 路径和 OpenSSL 版本，更换工具链时重编，不误用旧编译器产物。最终镜像及真机结果分别记录于[验收记录](<VERIFICATION.md>)。
 
 ## ADB 安全与宿主模拟器预留
 

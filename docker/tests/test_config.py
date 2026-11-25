@@ -159,7 +159,7 @@ class ImageContractTests(unittest.TestCase):
             'BASE_IMAGE': 'debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc',
             'JDK_VERSION': '17', 'NODE_VERSION': '26.13.1', 'YARN_VERSION': '1.22.22',
             'ANDROID_TOOLS_BUILD': '16111833', 'ANDROID_API': '34',
-            'ANDROID_BUILD_TOOLS': '37.0.0', 'ANDROID_LEGACY_BUILD_TOOLS': '30.0.3',
+            'ANDROID_BUILD_TOOLS': '30.0.3',
             'ANDROID_CMAKE': '3.31.6', 'RN_NDK_VERSION': '23.1.7779620',
             'RUST_NDK_VERSION': '30.0.16248370', 'PLATFORM_TOOLS_VERSION': '37.0.3',
             'RUSTUP_VERSION': '1.29.3', 'RUST_VERSION': '1.100.0', 'CARGO_NDK_VERSION': '4.1.2',
@@ -172,7 +172,8 @@ class ImageContractTests(unittest.TestCase):
         self.assertIn('commandlinetools-linux-${ANDROID_TOOLS_BUILD}_latest.zip', text)
         self.assertIn('"platforms;android-${ANDROID_API}"', text)
         self.assertIn('"build-tools;${ANDROID_BUILD_TOOLS}"', text)
-        self.assertIn('"build-tools;${ANDROID_LEGACY_BUILD_TOOLS}"', text)
+        self.assertNotIn('ANDROID_LEGACY_BUILD_TOOLS', text)
+        self.assertEqual(re.findall(r'"build-tools;[^"\n]+"', text), ['"build-tools;${ANDROID_BUILD_TOOLS}"'])
         self.assertIn('"cmake;${ANDROID_CMAKE}"', text)
         self.assertIn('"ndk;${RN_NDK_VERSION}" "ndk;${RUST_NDK_VERSION}"', text)
         self.assertIn('platform-tools_r${PLATFORM_TOOLS_VERSION}-linux.zip', text)
@@ -204,7 +205,7 @@ class ImageContractTests(unittest.TestCase):
         stage_args = {
             'base': {'JDK_VERSION'}, 'node': {'NODE_VERSION'}, 'yarn': {'YARN_VERSION'},
             'android-sdk': {'ANDROID_TOOLS_BUILD', 'ANDROID_API', 'ANDROID_BUILD_TOOLS',
-                            'ANDROID_LEGACY_BUILD_TOOLS', 'ANDROID_CMAKE', 'RN_NDK_VERSION',
+                            'ANDROID_CMAKE', 'RN_NDK_VERSION',
                             'RUST_NDK_VERSION', 'PLATFORM_TOOLS_VERSION'},
             'rust': {'RUSTUP_VERSION', 'RUST_VERSION', 'CARGO_NDK_VERSION'},
             'android-config': set(),

@@ -22,11 +22,8 @@ gradle.projectsEvaluated {
             // 不输出文件内容；不可读时路径字段保持 null。
         }
 
-        // 只收集列出的项目及明确允许的字段，不枚举整个 environment 或 properties。
-        def wanted = [':app', ':expo-modules-core', ':react-native-mmkv',
-                      ':react-native-reanimated', ':react-native-fast-image',
-                      ':react-native-community_slider'] as Set
-        root.allprojects.findAll { wanted.contains(it.path) }.sort { it.path }.each { project ->
+        // 收集所有已配置的 Android 项目，但只输出明确允许的字段。
+        root.allprojects.findAll { it.extensions.findByName('android') != null }.sort { it.path }.each { project ->
             try {
                 def android = project.extensions.findByName('android')
                 def report = [
