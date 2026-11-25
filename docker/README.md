@@ -7,6 +7,9 @@
 - 启动 VS Code 的普通用户必须能访问 Docker。加入 docker 组相当于授予 root 级权限，参见 [Docker 安全说明](<https://docs.docker.com/engine/install/linux-postinstall/>)；权限变化后重新登录。不要使用 `sudo code`、修改 socket 权限或开放 Docker TCP API。
 - 首次下载及原生构建建议预留 30 GiB 以上空间。不要为重试默认清理缓存或卷；依赖无 Yarn lock，传递依赖不保证完全可复现。
 
+> [!NOTE]
+> 如果 `docker build` 拉取基础镜像或下载工具链时超时，建议在 Ubuntu 宿主使用可信的 TUN 等透明代理，并确认 Docker 守护进程与 BuildKit 构建步骤的流量都能经过代理。只在浏览器或 VS Code 中设置代理，不一定覆盖镜像构建。
+
 ## 打开项目
 
 在普通用户终端克隆仓库并运行 VS Code，或打开已有普通 clone：
