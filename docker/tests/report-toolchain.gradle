@@ -1,0 +1,52 @@
+// 显式传给 Gradle --init-script 的只读诊断；不修改项目配置。
+import groovy.json.JsonOutput
+
+// 不同 AGP 的 DSL getter 可能不存在；诊断失败不能掩盖真正的构建结果。
+def safely = { Closure getter ->
+    try {
+        def value = getter.call()
+        return value == null ? null : value.toString()
+    } catch (Exception ignored) {
+        return null
+    }
+}
+
+gradle.projectsEvaluated {
+    try {
+        def root = gradle.rootProject
+        def local = new Properties()
+        def localFile = new File(root.projectDir, 'local.properties')
+        try {
+            if (localFile.isFile()) localFile.withInputStream { local.load(it) }
+        } catch (Exception ignored) {
+            // 不输出文件内容；不可读时路径字段保持 null。
+        }
+
+        // 只收集列出的项目及明确允许的字段，不枚举整个 environment 或 properties。
+        def wanted = [':app', ':expo-modules-core', ':react-native-mmkv',
+                      ':react-native-reanimated', ':react-native-fast-image',
+                      ':react-native-community_slider'] as Set
+        root.allprojects.findAll { wanted.contains(it.path) }.sort { it.path }.each { project ->
+            try {
+                def android = project.extensions.findByName('android')
+                def report = [
+                    project: project.path,
+                    buildToolsVersion: safely { android?.buildToolsVersion },
+                    compileSdkVersion: safely { android?.compileSdkVersion },
+                    ndkVersion: safely { android?.ndkVersion },
+                    cmakeVersion: safely { android?.externalNativeBuild?.cmake?.version },
+                    rootBuildToolsVersion: safely { root.ext.has('buildToolsVersion') ? root.ext.get('buildToolsVersion') : null },
+                    buildToolsProperty: safely { root.findProperty('android.buildToolsVersion') },
+                    buildToolsEnvironment: safely { System.getenv('ORG_GRADLE_PROJECT_android.buildToolsVersion') },
+                    sdkDir: local.getProperty('sdk.dir'),
+                    cmakeDir: local.getProperty('cmake.dir')
+                ]
+                println '[toolchain-report]' + JsonOutput.toJson(report)
+            } catch (Exception ignored) {
+                println '[toolchain-report]' + JsonOutput.toJson([project: project.path, diagnostic: 'unavailable'])
+            }
+        }
+    } catch (Exception ignored) {
+        println '[toolchain-report]' + JsonOutput.toJson([diagnostic: 'unavailable'])
+    }
+}

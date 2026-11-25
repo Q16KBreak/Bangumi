@@ -1,6 +1,6 @@
 # Bangumi Android：VS Code 单容器开发
 
-**本版已通过真实镜像构建和隔离工作台/ADB 检查，仍待真实项目依赖安装、VS Code 完整连接和新手机验收**；历史双容器和旧真机结果不代表本版真机已验证，见[验收记录](<VERIFICATION.md>)。
+**本版已在隔离源码副本通过镜像、工作台/ADB、原生 APK 构建和 Metro 实际打包；正式仓库依赖准备、VS Code 完整重连及新手机冷启动/Fast Refresh 仍待用户验收**。历史双容器或旧手机结果不代表本版真机已验证，见[验收记录](<VERIFICATION.md>)。
 
 目标是宿主只准备 **VS Code + Dev Containers 扩展、Docker Engine + Buildx/Compose、Git**，在一个容器终端内完成无线 ADB、Metro 和 Android 编译；宿主不需要 Node、ADB、JDK、Rust、Android SDK 或项目依赖。
 
@@ -107,7 +107,21 @@ bangumi help
 - 整仓库读写挂载到 `/repo`，Git 面板和宿主看到同一工作区；容器与受信任扩展也能访问仓库中的 `.git`、未跟踪或忽略的敏感文件。项目不主动挂 HOME、宿主 SSH/ADB 密钥、USB 或 Docker socket；VS Code/扩展可能根据个人设置共享凭据，请自行检查。推送仍由用户在宿主使用既有 SSH 443 和 rbw-agent。
 - `/workspace` 是镜像准备的 Android 运行配置，不是第二份源码；`src`、`android`、`node_modules`、`metro-cache` 指向同一宿主项目数据，真实根目录的 iOS 清单、Expo/Babel 配置不会被切换。不要在根目录执行 `yarn env` 或直接运行根项目 npm 脚本；Android 命令统一用 `bangumi`。宿主若复用项目依赖，必须自行确认 Linux、架构及工具版本兼容。
 - `node_modules`、Android `.gradle`、Rust `target`、OpenSSL 和 Metro 缓存留在仓库目录；Gradle 用户缓存、Cargo registry/git、Yarn 缓存及容器 ADB 身份分别由五个卷保存。**不自动清理缓存、镜像或卷。**工具链、运行脚本或镜像输入变化时在 VS Code 重建容器，以生成/复用匹配新输入的指纹镜像并执行初始化；普通源码修改不需要重建镜像。
-- [Dockerfile](<Dockerfile>)顶部用 `ARG` 集中维护版本：系统包/JDK 为 `base`，Node、Yarn、Android SDK 和 Rust 分别从 `base` 独立安装，最后只将工具产物复制进 `dev`；Android 清单及配置在独立阶段生成。标准流程使用文件内的 `ARG` 默认值，变更后 Rebuild 会生成新指纹镜像；升级仍需同步检查项目的 Gradle/NDK 兼容性。下载直接使用 HTTPS，不额外执行自定义摘要校验或构建末尾版本检查，SDK 与 Rust/Cargo 保留各自工具的校验机制。项目依赖由容器的 `bangumi init` 安装，执行 Yarn `--no-lockfile` 和补丁，不修改锁文件。仓库的 Cargo 构建仍使用 `--locked`。锁刷新、原生工程同步（如 Gradle sync / pod install）及业务/发布真机回归由用户自理。
+- [Dockerfile](<Dockerfile>)顶部用 `ARG` 集中维护版本：系统包/JDK 为 `base`，Node、Yarn、Android SDK 和 Rust 分别从 `base` 独立安装，最后只将工具产物复制进 `dev`；Android 清单及配置在独立阶段生成。标准流程使用文件内的 `ARG` 默认值，变更后 Rebuild 会生成新指纹镜像；版本以独立实测结果选定，不在启动流程做工具组合预检。下载直接使用 HTTPS，不额外执行自定义摘要校验或构建末尾版本检查，SDK 与 Rust/Cargo 保留各自工具的校验机制。项目依赖由容器的 `bangumi init` 安装，执行 Yarn `--no-lockfile` 和补丁，不修改锁文件。仓库的 Cargo 构建仍使用 `--locked`。锁刷新、原生工程同步（如 Gradle sync / pod install）及业务/发布真机回归由用户自理。
+
+当前工具版本集中在 [Dockerfile](<Dockerfile>)，本轮以隔离项目的实际构建结果选定：
+
+| 工具 | 当前配置与边界 |
+| --- | --- |
+| Node / Yarn Classic | 26.13.1 / 1.22.22 |
+| JDK | 17；JDK 25、21 均在现有 Gradle 8.0.1 配置阶段实际失败 |
+| SDK Command-line Tools / ADB | 23.0（16111833）/ 37.0.3 |
+| CMake | 3.31.6；4.1.2 实际被旧 Expo 的最低版本声明拒绝，未添加策略绕过 |
+| Rust / rustup / cargo-ndk | 1.100.0 / 1.29.3 / 4.1.2 |
+| Rust NDK / RN NDK | 30.0.16248370 / 工程固定的 23.1.7779620，二者独立 |
+| Build Tools / 编译平台 | 提供 37.0.0 与旧 AGP 必需的 30.0.3；编译平台保持工程 API 34 |
+
+Build Tools 37 通过工程已有属性供引用根配置的库使用；应用及部分库仍使用 AGP 默认的 30.0.3，不能称为全项目统一 37。正常的 Android 调试/本地构建配置由[工作区准备器](<prepare-workspace.cjs>)生成，选择容器 SDK、CMake 和根 Build Tools 属性；已存在的用户自管配置不会被覆盖。SDK 归开发用户所有，允许官方管理器写入正常状态与锁文件。OpenSSL 缓存记录 NDK 路径和 OpenSSL 版本，更换工具链时重编，不误用旧编译器产物。最终镜像及真机结果分别记录于[验收记录](<VERIFICATION.md>)。
 
 ## ADB 安全与宿主模拟器预留
 
@@ -116,6 +130,30 @@ bangumi help
 宿主模拟器**仅预留后端接口，尚未验收或实现 x86_64 构建**。用户可在宿主预先自行管理兼容的 ADB Server、客户端与模拟器，然后在启动 VS Code 的宿主环境中设置 `BANGUMI_ADB_SERVER_MODE=host` 并重新创建容器；该模式只探测并使用已有回环 server，不自动启动、关闭或替换它。保持宿主和容器 ADB 版本兼容；关闭容器也不停止宿主 server。
 
 当前 `BANGUMI_ANDROID_ABI` 只允许 `arm64-v8a`；Gradle、Rust、OpenSSL 尚不支持 x86_64，**ADB 能看到 x86_64 模拟器不意味着 ARM64 APK 能运行**。Ubuntu 本身运行在 VMware 中时，宿主模拟器还需自行确认嵌套虚拟化与 KVM 可用。
+
+## 官方 Features 的复用边界
+
+[官方 Features](<https://github.com/devcontainers/features>)可以复用通用工具安装，但不是自动消除安装成本：它们是在基础镜像之后执行安装脚本、增加镜像层。
+
+- [Node](<https://github.com/devcontainers/features/tree/main/src/node>)和[Java](<https://github.com/devcontainers/features/tree/main/src/java>)支持固定版本，分别使用 nvm 和 SDKMAN。若迁移，应替代对应的运行时安装，不能直接与现有版本叠加；本项目在 Android 配置生成阶段已调用 Node，现有系统/JDK 基础层和 SDK 构建流程也先于 Features；迁移前应先安排好构建期与运行期的分工。
+- [Rust Feature](<https://github.com/devcontainers/features/blob/main/src/rust/devcontainer-feature.json>)默认申请 `SYS_PTRACE` 与 `seccomp=unconfined`，还会改变 Cargo/Rustup 路径；不默认采用这些放宽设置。官方集合当前没有对应的 Android SDK、双 NDK 或 cargo-ndk Feature，这些项目特定工具仍自行管理。
+- 本版先保留已实测的 ARG 多阶段安装，不为复用而重复安装工具或扩大权限。将来可独立验证 Features 管理运行时工具的方案，但不能承诺首次构建必然更快或镜像更小。
+
+## 独立工具升级验收
+
+[升级验收脚本](<tests/validate-toolchain.sh>)只供明确授权后的隔离实验，**不会由 Dockerfile、容器入口或普通回归自动执行**。它仅从 Git 已跟踪文件的当前内容新建忽略的工作副本；发现未跟踪的非容器文件时先拒绝，要求明确处理复制范围，不静默遗漏或自动暂存。在副本中安装依赖和编译，并在运行前后核对锁文件；正式仓库的依赖和源码不作为写入目标。
+
+```bash
+# 尝试候选工具，仅做 Gradle 配置阶段；首次会创建并打印 CASE_DIRECTORY。
+CANDIDATE_NODE_VERSION=26.13.1 CANDIDATE_JDK_MAJOR=25 \
+  bash docker/tests/validate-toolchain.sh gradle-help
+
+# 使用同一隔离副本和镜像原有 JDK 做完整构建。
+CANDIDATE_NODE_VERSION=26.13.1 CANDIDATE_JDK_MAJOR=image \
+  bash docker/tests/validate-toolchain.sh build '<CASE_DIRECTORY>'
+```
+
+`CANDIDATE_NODE_VERSION=image`、`CANDIDATE_JDK_MAJOR=image` 表示不覆盖镜像中的对应工具，用于最终镜像复验。每次使用相同副本可复用该副本的依赖和下载缓存，但不会自动同步主工作树之后的源码改动；日志保存在该副本中。生产版本只在实测后提升，配置成功、依赖安装成功或出现 APK 均不能替代手机冷启动与热更新验收；不会为得到通过结果而往生产入口添加测试分支。
 
 ## 排障与维护检查
 

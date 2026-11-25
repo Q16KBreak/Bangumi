@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # VS Code 宿主初始化：只准备挂载目录、镜像和本机 Compose 覆盖，不安装宿主依赖。
 set -Eeuo pipefail
+# 指纹输入顺序不能随 VS Code 与终端的区域设置而变化。
+export LC_ALL=C
 
 fail() { printf '[devcontainer] 错误：%s\n' "$*" >&2; exit 1; }
 usage() {

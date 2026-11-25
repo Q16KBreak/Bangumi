@@ -131,6 +131,8 @@ class DevcontainerConfigTests(unittest.TestCase):
         prepare = text.split('prepare_runtime() {\n', 1)[1].split('\n}\n', 1)[0]
         self.assertIn('prepare-workspace.cjs check', prepare)
         self.assertIn('prepare-workspace.cjs sync', prepare)
+        self.assertIn('prepare-workspace.cjs configure', prepare)
+        self.assertNotIn("node <<'NODE'", prepare)
         self.assertIn('prepare_runtime', text.split('  metro)\n', 1)[1].split('    ;;', 1)[0])
         build = text.split('  build)\n', 1)[1].split('    ;;', 1)[0]
         self.assertIn('prepare_runtime', build)
@@ -155,12 +157,12 @@ class ImageContractTests(unittest.TestCase):
         text = (DOCKER / 'Dockerfile').read_text()
         defaults = {
             'BASE_IMAGE': 'debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc',
-            'JDK_VERSION': '17', 'NODE_VERSION': '22.20.0', 'YARN_VERSION': '1.22.22',
-            'ANDROID_TOOLS_BUILD': '13114758', 'ANDROID_API': '34',
-            'ANDROID_BUILD_TOOLS': '33.0.0', 'ANDROID_LEGACY_BUILD_TOOLS': '30.0.3',
-            'ANDROID_CMAKE': '3.22.1', 'RN_NDK_VERSION': '23.1.7779620',
-            'RUST_NDK_VERSION': '27.1.12297006', 'PLATFORM_TOOLS_VERSION': '37.0.1',
-            'RUSTUP_VERSION': '1.28.2', 'RUST_VERSION': '1.100.0', 'CARGO_NDK_VERSION': '4.1.2',
+            'JDK_VERSION': '17', 'NODE_VERSION': '26.13.1', 'YARN_VERSION': '1.22.22',
+            'ANDROID_TOOLS_BUILD': '16111833', 'ANDROID_API': '34',
+            'ANDROID_BUILD_TOOLS': '37.0.0', 'ANDROID_LEGACY_BUILD_TOOLS': '30.0.3',
+            'ANDROID_CMAKE': '3.31.6', 'RN_NDK_VERSION': '23.1.7779620',
+            'RUST_NDK_VERSION': '30.0.16248370', 'PLATFORM_TOOLS_VERSION': '37.0.3',
+            'RUSTUP_VERSION': '1.29.3', 'RUST_VERSION': '1.100.0', 'CARGO_NDK_VERSION': '4.1.2',
         }
         header = text.split('FROM ', 1)[0]
         for name, value in defaults.items():
@@ -206,7 +208,7 @@ class ImageContractTests(unittest.TestCase):
                             'RUST_NDK_VERSION', 'PLATFORM_TOOLS_VERSION'},
             'rust': {'RUSTUP_VERSION', 'RUST_VERSION', 'CARGO_NDK_VERSION'},
             'android-config': set(),
-            'dev': {'LOCAL_UID', 'LOCAL_GID', 'ANDROID_CMAKE', 'RUST_NDK_VERSION', 'RUST_VERSION'},
+            'dev': {'LOCAL_UID', 'LOCAL_GID', 'ANDROID_BUILD_TOOLS', 'ANDROID_CMAKE', 'RUST_NDK_VERSION', 'RUST_VERSION'},
         }
         for stage, expected in stage_args.items():
             with self.subTest(stage=stage):
@@ -214,13 +216,15 @@ class ImageContractTests(unittest.TestCase):
         dev = contents['dev']
         for copy in ['COPY --from=node /usr/local/ /usr/local/',
                      'COPY --from=yarn /opt/yarn/ /opt/yarn/',
-                     'COPY --from=android-sdk /opt/android-sdk/ /opt/android-sdk/',
+                     'COPY --from=android-sdk --chown=${LOCAL_UID}:${LOCAL_GID} /opt/android-sdk/ /opt/android-sdk/',
                      'COPY --from=rust /opt/cargo/bin/ /opt/cargo/bin/',
                      'COPY --from=rust /opt/rustup/ /opt/rustup/']:
             self.assertIn(copy, dev)
         self.assertNotIn('COPY --from=rust /opt/cargo/ /opt/cargo/', dev)
         self.assertIn('ANDROID_NDK_HOME=/opt/android-sdk/ndk/${RUST_NDK_VERSION}', dev)
         self.assertIn('RUSTUP_TOOLCHAIN=${RUST_VERSION}', dev)
+        self.assertIn('BANGUMI_ANDROID_BUILD_TOOLS=${ANDROID_BUILD_TOOLS}', dev)
+        self.assertIn('BANGUMI_CMAKE_DIR=/opt/android-sdk/cmake/${ANDROID_CMAKE}', dev)
         self.assertIn('cmdline-tools/latest/bin', dev)
         self.assertIn('install -d -m 0755 /usr/local/lib/bangumi', dev)
         self.assertLess(dev.index('install -d -m 0755 /usr/local/lib/bangumi'),
@@ -258,6 +262,17 @@ class ImageContractTests(unittest.TestCase):
             self.assertIn(value, runtime)
         self.assertIn('ENV PATH=/usr/local/bin:', text)
         self.assertNotIn('editor-entrypoint', text)
+
+    def test_升级验收仅在独立流程中显式运行(self):
+        for name in ['Dockerfile', 'entrypoint.sh', 'devcontainer-host.sh']:
+            for probe in ['validate-toolchain.sh', 'report-toolchain.gradle']:
+                self.assertNotIn(probe, (DOCKER / name).read_text())
+        config = (ROOT / '.devcontainer' / 'devcontainer.json').read_text()
+        for probe in ['validate-toolchain.sh', 'report-toolchain.gradle']:
+            self.assertNotIn(probe, config)
+        rules = (DOCKER / 'Dockerfile.dockerignore').read_text().splitlines()
+        self.assertIn('**/tests/**', rules)
+        self.assertNotIn('!docker/tests/validate-toolchain.sh', rules)
 
     def test_源码密钥和锁文件不纳入构建上下文(self):
         rules = [line.strip() for line in (DOCKER / 'Dockerfile.dockerignore').read_text().splitlines()

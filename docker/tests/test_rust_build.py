@@ -25,7 +25,7 @@ class RustBuildScriptTests(unittest.TestCase):
         (self.rust / 'Cargo.toml').write_text('[package]\nname = "ech-proxy"\n')
         self.prefix = self.rust / 'openssl' / 'install'
         self.source = self.rust / 'openssl' / 'build' / 'openssl-4.0.1'
-        self.ndk = self.root / 'android-sdk' / 'ndk' / '27.1.12297006'
+        self.ndk = self.root / 'android-sdk' / 'ndk' / '30.0.16248370'
         self.toolchain = self.ndk / 'toolchains' / 'llvm' / 'prebuilt' / 'linux-x86_64' / 'bin'
         self.toolchain.mkdir(parents=True)
         self.bin = self.root / 'bin'
@@ -38,6 +38,7 @@ class RustBuildScriptTests(unittest.TestCase):
                                    'OPENSSL_LIB_DIR', 'OPENSSL_STATIC'}}
         self.env['PATH'] = f"{self.bin}:{self.env['PATH']}"
         self.env['ANDROID_HOME'] = str(self.root / 'android-sdk')
+        self.env['ANDROID_NDK_HOME'] = str(self.ndk)
         self.env['FAKE_LOG'] = str(self.log)
         self.env['FAKE_PREFIX'] = str(self.prefix)
         self._write_commands()
@@ -125,6 +126,7 @@ class RustBuildScriptTests(unittest.TestCase):
         (self.prefix / 'lib' / 'libssl.a').write_text('cached')
         (self.prefix / 'lib' / 'libcrypto.a').write_text('cached')
         (self.prefix / '.threads-ok').write_text('')
+        (self.prefix / '.toolchain').write_text(f'4.0.1|{self.ndk}\n')
 
     def _reset_openssl_state(self):
         shutil.rmtree(self.rust / 'openssl', ignore_errors=True)
@@ -149,6 +151,38 @@ class RustBuildScriptTests(unittest.TestCase):
             self.assertEqual(self._calls(prefix), [], prefix)
         self.assertFalse((self.source / 'configure.args').exists())
         self.assertTrue(self._calls('cargo'))
+
+    def test_旧OpenSSL缓存没有工具链标记时重新编译(self):
+        self._seed_openssl_cache()
+        (self.prefix / '.toolchain').unlink()
+        result = self._run()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(self._calls('make'))
+        self.assertEqual((self.prefix / '.toolchain').read_text(), f'4.0.1|{self.ndk}\n')
+
+    def test_更换NDK时不复用旧编译器的OpenSSL缓存(self):
+        self._seed_openssl_cache()
+        custom = self.root / 'updated rust ndk'
+        shutil.copytree(self.ndk, custom)
+        result = self._run(ANDROID_NDK_HOME=str(custom))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(self._calls('make'))
+        self.assertEqual((self.prefix / '.toolchain').read_text(), f'4.0.1|{custom}\n')
+
+    def test_换NDK安装后线程失败不留下旧成功标记且回退必须重编(self):
+        self._seed_openssl_cache()
+        custom = self.root / 'failing new ndk'
+        shutil.copytree(self.ndk, custom)
+        failed = self._run(ANDROID_NDK_HOME=str(custom), FAKE_NO_THREADS='1')
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertTrue(any('install_sw' in line for line in self._calls('make')))
+        self.assertFalse((self.prefix / '.threads-ok').exists())
+        self.assertFalse((self.prefix / '.toolchain').exists())
+        self.log.write_text('')
+        recovered = self._run()
+        self.assertEqual(recovered.returncode, 0, recovered.stderr)
+        self.assertTrue(self._calls('make'))
+        self.assertEqual((self.prefix / '.toolchain').read_text(), f'4.0.1|{self.ndk}\n')
 
     def test_Rust_NDK使用镜像环境配置而不绑定默认版本目录(self):
         custom = self.root / 'custom rust ndk'

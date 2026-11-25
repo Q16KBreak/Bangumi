@@ -4,7 +4,7 @@
 # 用法:
 #   bash /usr/local/lib/bangumi/build-rust.sh [PROJECT_ROOT]   # 默认 /workspace
 #
-# 镜像已预装 Rust 1.100 / cargo-ndk / NDK 27.1, 这里只做编译, 不再安装工具链。
+# Rust、cargo-ndk 和 Rust NDK 由镜像提供；这里只编译，不安装工具链。
 set -Eeuo pipefail
 
 OPENSSL_VERSION=4.0.1
@@ -15,8 +15,9 @@ OPENSSL_ROOT="$RUST_DIR/openssl"
 OPENSSL_SRC="$OPENSSL_ROOT/build/openssl-$OPENSSL_VERSION"
 OPENSSL_PREFIX="$OPENSSL_ROOT/install"
 # 使用镜像指定的 Rust NDK，独立于 Gradle 的 RN NDK。
-NDK="${ANDROID_NDK_HOME:-${ANDROID_HOME:-/opt/android-sdk}/ndk/27.1.12297006}"
+NDK="$ANDROID_NDK_HOME"
 TOOLCHAIN_BIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+OPENSSL_CACHE_KEY="$OPENSSL_VERSION|$NDK"
 
 log() { printf '[build-rust] %s\n' "$*"; }
 die() { printf '[build-rust] error: %s\n' "$*" >&2; exit 1; }
@@ -40,9 +41,20 @@ export OPENSSL_INCLUDE_DIR="$OPENSSL_PREFIX/include"
 export OPENSSL_LIB_DIR="$OPENSSL_PREFIX/lib"
 export OPENSSL_STATIC=1
 
-if [ -f "$OPENSSL_PREFIX/lib/libssl.a" ] && [ -f "$OPENSSL_PREFIX/.threads-ok" ]; then
+cached_toolchain=''
+if [ -f "$OPENSSL_PREFIX/.toolchain" ]; then
+  IFS= read -r cached_toolchain < "$OPENSSL_PREFIX/.toolchain" || true
+fi
+if [ -f "$OPENSSL_PREFIX/lib/libssl.a" ] && [ -f "$OPENSSL_PREFIX/.threads-ok" ] && [ "$cached_toolchain" = "$OPENSSL_CACHE_KEY" ]; then
   log "OpenSSL 已编译且 threads 已校验, 复用缓存"
 else
+  # 先失效旧成功状态，失败或中断后不能误认被覆盖的库仍属于旧工具链。
+  cache_prefix="$(realpath -m -- "$OPENSSL_PREFIX")"
+  for marker in .threads-ok .toolchain; do
+    [ "$(realpath -m -- "$OPENSSL_PREFIX/$marker")" = "$cache_prefix/$marker" ] \
+      || die "OpenSSL 缓存标记路径异常: $OPENSSL_PREFIX/$marker"
+  done
+  rm -f -- "$OPENSSL_PREFIX/.threads-ok" "$OPENSSL_PREFIX/.toolchain"
   if [ ! -f "$OPENSSL_SRC/Configure" ]; then
     log "下载 OpenSSL $OPENSSL_VERSION ..."
     mkdir -p "$OPENSSL_ROOT/build"
@@ -70,6 +82,7 @@ else
     make install_sw
   )
   openssl_threads_ok || die "OpenSSL 缺少多线程支持 (no-threads), 请检查 Configure 参数"
+  printf '%s\n' "$OPENSSL_CACHE_KEY" > "$OPENSSL_PREFIX/.toolchain"
   touch "$OPENSSL_PREFIX/.threads-ok"
   log "OpenSSL 多线程校验通过"
 fi

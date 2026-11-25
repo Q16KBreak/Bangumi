@@ -19,7 +19,7 @@
 | [compose.yml](<compose.yml>) | 单一 `dev` 服务、仓库与运行视图挂载、host 网络、五个用户级卷 |
 | [devcontainer.json](<../.devcontainer/devcontainer.json>) | VS Code 标准入口：宿主 initialize、单容器、postStart 等待初始化 |
 | [devcontainer-host.sh](<devcontainer-host.sh>) | 宿主 UID/GID、镜像输入指纹、缺失时构建镜像及本机 Compose 覆盖 |
-| [prepare-workspace.cjs](<prepare-workspace.cjs>) | 受标记约束的 Android 依赖安装/复用、补丁与共用入口同步 |
+| [prepare-workspace.cjs](<prepare-workspace.cjs>) | 受标记约束的 Android 依赖安装/复用、补丁、共用入口同步及正常原生构建配置生成 |
 | [entrypoint.sh](<entrypoint.sh>) | workbench、运行环境检查、Metro 和 Rust/Gradle 构建 |
 | [develop.sh](<develop.sh>) | 容器内 `bangumi`：初始化、设备选择、构建安装、受管 Metro、日志 |
 | [adb.sh](<adb.sh>)、[adb-manager.sh](<adb-manager.sh>)、[adb-server.sh](<adb-server.sh>) | ADB 参数保护、容器/host server 归属与只读协议探测 |
@@ -36,7 +36,9 @@
 - 真实仓库保留 `node_modules`、Android `.gradle`、Rust `target`/OpenSSL 和 Metro 缓存；仅 Gradle 用户缓存、Cargo registry/git、Yarn 缓存及容器 ADB 状态使用五个卷。`postStart` 每次启动运行 `bangumi init`，依赖输入未变时复用现有产物，失败后可重新启动重试；受管状态保存在 `node_modules/.bangumi-android-dependencies/state.json`。Android 清单、Expo/Babel、补丁及 ESLint 插件是镜像快照，改这些输入后须重建容器以更新指纹镜像，再由 `postStart` 初始化；旧镜像中的 `bangumi init` 不能获取新快照。
 - 自动初始化按 Dockerfile 和实际镜像输入哈希+UID/GID 计算本地镜像标签；缺失时一次构建，再生成本机 Compose 覆盖。Compose 服务本身无 `build`，防止 VS Code 临时 Dockerfile 触发第二次完整构建。
 - 语言服务使用 Android 依赖，根清单仍是 iOS 默认；不运行根 `yarn env` 或直接根项目启动脚本，不承诺全量类型零错误或未经验证的断点调试。完整仓库中未跟踪和忽略的敏感文件对容器/扩展可见；不承诺 VS Code 不会按个人配置共享凭据。
-- RN 与 Rust/OpenSSL 分别使用 NDK 23.1 和 27.1；以 Dockerfile、构建入口和工程配置为准。保留 Rust 的 `no-shared`、线程检查和 Cargo `--locked`。
+- RN 与 Rust/OpenSSL 分别使用 NDK 23.1 和 30.0；以 Dockerfile、构建入口和工程配置为准。保留 Rust 的 `no-shared`、线程检查和 Cargo `--locked`；OpenSSL 缓存标记须跟随 NDK 路径与 OpenSSL 版本，升级不能误复用旧编译器产物。
+- 正常原生配置由准备器生成，标准本地属性选择 SDK/CMake，Gradle 属性提供根 Build Tools 版本；保留用户自管配置，不为了测试修改依赖源码或注入 CMake 策略绕过。JDK 25/21 与 CMake 4 已有实际失败证据，不在 Dockerfile/入口增加版本组合预检。
+- 工具链的真实升级验收仅显式运行 `tests/` 中独立流程；不得塞入 Dockerfile、生产入口或普通 postStart。官方 Features 必须先评估构建期依赖、重复安装、PATH/缓存及隐含权限，不默认放宽现有安全配置。
 
 ## ADB、手机与网络
 

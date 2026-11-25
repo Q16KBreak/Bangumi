@@ -1,19 +1,19 @@
 # syntax=docker/dockerfile:1.7
 # 一体化 Android 开发环境；源码、项目依赖与产物在运行时挂载。
-# 修改工具版本时同时检查项目的 Gradle / RN / NDK 兼容性。
+# 固定工具版本集中于下方 ARG；独立验收流程不参与镜像安装。
 ARG BASE_IMAGE=debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
 ARG JDK_VERSION=17
-ARG NODE_VERSION=22.20.0
+ARG NODE_VERSION=26.13.1
 ARG YARN_VERSION=1.22.22
-ARG ANDROID_TOOLS_BUILD=13114758
+ARG ANDROID_TOOLS_BUILD=16111833
 ARG ANDROID_API=34
-ARG ANDROID_BUILD_TOOLS=33.0.0
+ARG ANDROID_BUILD_TOOLS=37.0.0
 ARG ANDROID_LEGACY_BUILD_TOOLS=30.0.3
-ARG ANDROID_CMAKE=3.22.1
+ARG ANDROID_CMAKE=3.31.6
 ARG RN_NDK_VERSION=23.1.7779620
-ARG RUST_NDK_VERSION=27.1.12297006
-ARG PLATFORM_TOOLS_VERSION=37.0.1
-ARG RUSTUP_VERSION=1.28.2
+ARG RUST_NDK_VERSION=30.0.16248370
+ARG PLATFORM_TOOLS_VERSION=37.0.3
+ARG RUSTUP_VERSION=1.29.3
 ARG RUST_VERSION=1.100.0
 ARG CARGO_NDK_VERSION=4.1.2
 
@@ -116,6 +116,7 @@ RUN node packages/env.js android
 FROM base AS dev
 ARG LOCAL_UID=1000
 ARG LOCAL_GID=1000
+ARG ANDROID_BUILD_TOOLS
 ARG ANDROID_CMAKE
 ARG RUST_NDK_VERSION
 ARG RUST_VERSION
@@ -135,13 +136,15 @@ ENV HOME=/home/dev \
     BANGUMI_CONTAINER=1 \
     BANGUMI_ADB_SERVER_MODE=container \
     BANGUMI_ANDROID_ABI=arm64-v8a \
+    BANGUMI_ANDROID_BUILD_TOOLS=${ANDROID_BUILD_TOOLS} \
+    BANGUMI_CMAKE_DIR=/opt/android-sdk/cmake/${ANDROID_CMAKE} \
     BANGUMI_BUILD_JOBS=4
 # /usr/local/bin 优先以便使用项目 ADB 客户端包装器。
 ENV PATH=/usr/local/bin:/opt/cargo/bin:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:/opt/android-sdk/cmake/${ANDROID_CMAKE}/bin:${JAVA_HOME}/bin:${PATH}
 
 COPY --from=node /usr/local/ /usr/local/
 COPY --from=yarn /opt/yarn/ /opt/yarn/
-COPY --from=android-sdk /opt/android-sdk/ /opt/android-sdk/
+COPY --from=android-sdk --chown=${LOCAL_UID}:${LOCAL_GID} /opt/android-sdk/ /opt/android-sdk/
 COPY --from=rust /opt/cargo/bin/ /opt/cargo/bin/
 COPY --from=rust /opt/rustup/ /opt/rustup/
 RUN ln -s /opt/yarn/bin/yarn /usr/local/bin/yarn \
