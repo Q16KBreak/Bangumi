@@ -30,29 +30,28 @@ code .
 以下命令均在 VS Code 容器终端执行。可先执行 `bangumi build`，避免配对后等待首次编译。
 
 1. 在手机开发者选项启用无线调试，选择“使用配对码配对设备”。
-2. 执行 `bangumi pair 手机IP:配对端口`，在终端交互输入配对码；不要将配对码写入参数、日志或聊天。
-3. 返回无线调试主界面，使用其**连接端口**执行 `bangumi connect 手机IP:连接端口`。
+2. 执行 `adb pair 手机IP:配对端口`，在终端交互输入配对码；不要将配对码写入参数、日志或聊天。
+3. 返回无线调试主界面，使用其**连接端口**执行 `adb connect 手机IP:连接端口`。
 4. 保持手机解锁、亮屏，执行 `bangumi start`。它会构建、安装、配置调试地址和 adb reverse 并启动开发包；启动后保持应用前台以观察热更新。多设备时使用 `bangumi start --device '完整序列号'`；序列号可能包含空格。
 
 ## 常用命令
 
 | 命令 | 作用 |
 | --- | --- |
-| `bangumi init` | 初始化 Android 配置与依赖 |
-| `bangumi build` | 编译 Rust/ECH 和 Android debug APK |
-| `bangumi up` / `bangumi metro` | 后台启动 / 前台运行 Metro |
-| `bangumi devices` | 列出设备和 mDNS 发现 |
+| `bangumi init` | 初始化 Android 环境与依赖 |
 | `bangumi start [IP:PORT\|--device SERIAL]` | 构建、安装并启动所选设备 |
-| `bangumi install [--device SERIAL]` | 安装已有 APK，不清数据 |
-| `bangumi logs [--device SERIAL]` | 查看设备日志 |
-| `bangumi down` | 仅停止本命令管理的 Metro |
+| `bangumi build` | 编译 Rust/ECH 和 Android debug APK，生成原生构建配置 |
+| `bangumi metro` | 前台运行 Metro，不生成原生构建配置 |
+| `bangumi down` | 仅停止 `start` 启动的后台 Metro |
 
-设备唯一时可省略 `--device`；多设备必须显式选择或设置 `ANDROID_SERIAL`。关闭 VS Code 时容器停止，仓库和命名卷保留。
+`bangumi start` 在设备唯一时可省略 `--device`；多设备必须显式选择或设置 `ANDROID_SERIAL`。只改 JS/TS 时保留 Metro 即可热更新。关闭 VS Code 时容器停止，仓库和命名卷保留。
+
+容器里的 `adb` 仍经过 [ADB 包装器](<adb.sh>)。排查设备用 `adb devices -l` 或 `adb mdns services`，查看日志用 `adb -s '序列号' logcat`。仅安装已有 APK 可用 `adb -s '序列号' install -r android/app/build/outputs/apk/debug/app-arm64-v8a-debug.apk`。
 
 ## 排障与安全
 
 - 设备命令按需启动容器自己的 ADB Server；5037 被占用时检查已有服务，不会自动替换或杀掉它。容器打开不要求 ADB 已启动。
-- 设备 offline 或 unauthorized：检查网络、无线调试及配对/连接端口，再运行 `bangumi devices`。
+- 设备 offline 或 unauthorized：检查网络、无线调试及配对/连接端口，再运行 `adb devices -l`。
 - 8081 被占用：检查占用进程和所选设备 reverse；脚本不会接管或杀死其他 Metro。
 - 下载或磁盘失败：检查网络和空间，保留错误现场；不要关闭 TLS、刷新锁文件或默认清缓存。已有手写 Gradle 配置由用户确认处理。
 - 网络使用 host 模式；ADB 和 Metro 分别使用回环 5037 与 8081，手机通过所选设备的 adb reverse 访问 Metro。不发布这些端口，不启用 privileged、USB 或宿主 Docker socket 挂载。

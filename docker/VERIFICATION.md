@@ -10,7 +10,7 @@
 
 ## 当前改动验证
 
-Shell、Node、Python 语法检查、Compose 配置解析、Dev Container 自动初始化契约和镜像 COPY 源文件检查通过。保留单服务、唯一整仓挂载、五个卷及容器安全选项。
+Shell、Node、Python 语法检查、Compose 配置解析和 Dev Container 自动初始化配置检查通过。模拟验证了 `start` 的设备选择、ABI 检查和反向转发失败处理，以及 Metro 与原生构建各自的准备顺序。
 
 本轮未重建镜像、安装项目依赖、构建 APK 或操作手机；静态检查不代表 VS Code 生命周期或真机验收。
 

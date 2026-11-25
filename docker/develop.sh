@@ -16,20 +16,15 @@ usage() {
   printf '%s\n' \
     '用法：bangumi <命令> [参数]' \
     '  init                       初始化 Android 配置和项目依赖' \
+    '  start [IP:PORT|--device SERIAL]  选择设备、编译、安装并启动' \
     '  build                      编译 Rust/ECH 与 Android debug APK' \
     '  metro                      前台运行 Metro（127.0.0.1:8081）' \
-    '  up                         后台启动并等待本项目 Metro' \
-    '  pair IP:PORT               交互配对无线调试（配对码仅在终端输入）' \
-    '  connect IP:PORT            连接已配对手机' \
-    '  devices                    列出设备与 mDNS 发现' \
-    '  start [IP:PORT|--device SERIAL]  选择设备、编译、安装并启动' \
-    '  install [--device SERIAL]  安装已构建 APK，不清数据' \
-    '  logs [--device SERIAL]     查看所选设备日志' \
-    '  down                       仅停止本命令启动的 Metro' \
+    '  down                       停止 start 启动的后台 Metro' \
     '  help                       显示帮助' \
+    '无线调试使用 adb pair、adb connect 和 adb devices -l。' \
     '多设备时必须指定 --device 或 ANDROID_SERIAL；目前仅支持 arm64-v8a。'
 }
-check_args() { (( $1 >= $2 && $1 <= $3 )) || fail '参数数量不正确，请查看 help。'; }
+require_no_args() { (( $# == 0 )) || fail '此命令不接受参数，请查看 help。'; }
 check_abi_config() {
   [[ "${BANGUMI_ANDROID_ABI:-arm64-v8a}" == arm64-v8a ]] || \
     fail '当前仅支持 BANGUMI_ANDROID_ABI=arm64-v8a；x86_64 模拟器构建尚未支持。'
@@ -67,10 +62,9 @@ select_device() {
   printf '%s\n' "$selected"
 }
 
-# 设备 ABI 读取失败、未声明 arm64、或自定义构建 ABI 均不得安装。
+# 设备 ABI 读取失败或未声明 arm64 时不得安装。
 check_device_abi() {
   local serial="$1" abis
-  check_abi_config
   abis="$("$ADB_BIN" -s "$serial" shell getprop ro.product.cpu.abilist)" || \
     fail '读取设备 ABI 失败，不会安装 APK。'
   abis="${abis//$'\r'/}"
@@ -221,26 +215,17 @@ main() {
   (( $# == 0 )) || shift
   [[ "${BANGUMI_CONTAINER:-}" == 1 ]] || fail '请在 Bangumi 开发容器终端运行。'
   case "$command" in
-    help|-h|--help) check_args "$#" 0 0; usage ;;
+    help|-h|--help) require_no_args "$@"; usage ;;
     init)
-      check_args "$#" 0 0
+      require_no_args "$@"
       local state
       state="$(metro_state_dir)"
       exec flock "$state/deps.lock" node "$BANGUMI_LIB/prepare-project.cjs" init
       ;;
-    build) check_args "$#" 0 0; check_abi_config; exec "$BANGUMI_ENTRYPOINT" build ;;
-    metro) check_args "$#" 0 0; check_abi_config; exec "$BANGUMI_ENTRYPOINT" metro ;;
-    up) check_args "$#" 0 0; check_abi_config; metro_up ;;
-    down) check_args "$#" 0 0; metro_down ;;
-    pair)
-      check_args "$#" 1 1; check_endpoint "$1"
-      [[ -t 0 ]] || fail '配对需要交互终端；不要把配对码放入命令参数。'
-      exec "$ADB_BIN" pair "$1"
-      ;;
-    connect) check_args "$#" 1 1; check_endpoint "$1"; exec "$ADB_BIN" connect "$1" ;;
-    devices) check_args "$#" 0 0; "$ADB_BIN" devices -l; "$ADB_BIN" mdns services ;;
-    start|install|logs)
-      if [[ "$command" == start && $# == 1 ]]; then
+    build|metro) require_no_args "$@"; exec "$BANGUMI_ENTRYPOINT" "$command" ;;
+    down) require_no_args "$@"; metro_down ;;
+    start)
+      if (( $# == 1 )); then
         check_endpoint "$1"; endpoint="$1"; wanted="$1"
       elif (( $# )); then
         [[ $# == 2 && "$1" == --device && -n "$2" ]] || fail '请使用 --device SERIAL 指定设备。'
@@ -248,24 +233,17 @@ main() {
       fi
       [[ -z "$wanted" || -z "${ANDROID_SERIAL:-}" || "$ANDROID_SERIAL" == "$wanted" ]] || \
         fail 'ANDROID_SERIAL 与显式选择的设备不同，请统一目标。'
-      if [[ "$command" == start || "$command" == install ]]; then check_abi_config; fi
+      check_abi_config
       if [[ -n "$endpoint" ]]; then "$ADB_BIN" connect "$endpoint"; fi
       serial="$(select_device "$wanted")"
-      case "$command" in
-        start)
-          check_abi_config
-          check_device_abi "$serial"
-          metro_up
-          "$BANGUMI_ENTRYPOINT" build
-          install_apk "$serial"
-          configure_debug_prefs "$serial"
-          "$ADB_BIN" -s "$serial" reverse tcp:8081 tcp:8081 || fail '建立 Metro 反向端口失败，不会启动应用。'
-          "$ADB_BIN" -s "$serial" shell am start -W -n "$COMPONENT"
-          printf '已启动开发包：%s；Metro 通过 adb reverse 访问 127.0.0.1:8081。\n' "$serial"
-          ;;
-        install) install_apk "$serial" ;;
-        logs) exec "$ADB_BIN" -s "$serial" logcat ReactNative:V ReactNativeJS:V AndroidRuntime:E '*:S' ;;
-      esac
+      check_device_abi "$serial"
+      metro_up
+      "$BANGUMI_ENTRYPOINT" build
+      install_apk "$serial"
+      configure_debug_prefs "$serial"
+      "$ADB_BIN" -s "$serial" reverse tcp:8081 tcp:8081 || fail '建立 Metro 反向端口失败，不会启动应用。'
+      "$ADB_BIN" -s "$serial" shell am start -W -n "$COMPONENT"
+      printf '已启动开发包：%s；Metro 通过 adb reverse 访问 127.0.0.1:8081。\n' "$serial"
       ;;
     *) fail "未知命令：$command，请查看 help。" ;;
   esac

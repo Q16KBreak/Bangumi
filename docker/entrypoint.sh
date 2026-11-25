@@ -16,18 +16,12 @@ export BANGUMI_ANDROID_ABI="${BANGUMI_ANDROID_ABI:-arm64-v8a}"
 [[ "$BANGUMI_ANDROID_ABI" == arm64-v8a ]] || \
   fail 'Only arm64-v8a Android devices are supported.'
 
-prepare_runtime() {
-  node /usr/local/lib/bangumi/prepare-project.cjs check
-  [[ -f android/gradlew && -f android/rust/Cargo.toml ]] || \
-    fail 'The Android runtime bind is missing; use docker/compose.yml.'
+require_writable_caches() {
   local directory
-  for directory in "$GRADLE_USER_HOME" "$CARGO_HOME/registry" "$CARGO_HOME/git" \
-    android/.gradle android/rust/target android/rust/openssl metro-cache; do
+  for directory in "$@"; do
     mkdir -p "$directory"
     [[ -w "$directory" ]] || fail "Cache is not writable: $directory (check image UID/GID and existing volume ownership)."
   done
-
-  node /usr/local/lib/bangumi/prepare-project.cjs configure
 }
 
 command="${1:-workbench}"
@@ -41,15 +35,21 @@ case "$command" in
     ;;
   metro)
     (( $# == 0 )) || fail 'metro takes no arguments; it serves the loopback development server on 127.0.0.1:8081.'
-    prepare_runtime
+    node /usr/local/lib/bangumi/prepare-project.cjs check
+    require_writable_caches metro-cache
     exec node /usr/local/lib/bangumi/start-metro.cjs
     ;;
   build)
     (( $# == 0 )) || fail 'build takes no arguments; it only runs Rust then assembleDebug.'
-    prepare_runtime
+    node /usr/local/lib/bangumi/prepare-project.cjs check
+    [[ -f android/gradlew && -f android/rust/Cargo.toml ]] || \
+      fail 'The Android runtime bind is missing; use docker/compose.yml.'
+    require_writable_caches "$GRADLE_USER_HOME" "$CARGO_HOME/registry" "$CARGO_HOME/git" \
+      android/.gradle android/rust/target android/rust/openssl
     # Serialize Rust and Gradle over the real project directory, without ADB.
     exec 9>android/.gradle/bangumi-build.lock
     flock -n 9 || fail 'Another native build is already using this project.'
+    node /usr/local/lib/bangumi/prepare-project.cjs configure
     bash /usr/local/lib/bangumi/build-rust.sh /repo
     cd android
     exec bash ./gradlew --no-daemon --console=plain assembleDebug
