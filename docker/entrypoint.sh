@@ -1,24 +1,23 @@
 #!/usr/bin/env bash
 # @Author: Q16KBreak
 #
-# 单容器入口：保持工作台运行，或在隔离 Android 配置下启动 Metro / 编译。
+# 单容器入口：保持工作台运行，或在仓库中启动 Metro / 编译。
 set -Eeuo pipefail
 
 fail() { printf '[bangumi] %s\n' "$*" >&2; exit 1; }
 
 [[ "${BANGUMI_CONTAINER:-}" == 1 && "$(id -u)" != 0 ]] || \
   fail 'Run as the non-root Dev Container user, not on the host.'
-cd /workspace
+cd /repo
 export ADB_SERVER_SOCKET=tcp:127.0.0.1:5037
 export BANGUMI_BUILD_JOBS="${BANGUMI_BUILD_JOBS:-4}"
 export BANGUMI_ANDROID_ABI="${BANGUMI_ANDROID_ABI:-arm64-v8a}"
 [[ "$BANGUMI_BUILD_JOBS" =~ ^[1-9][0-9]*$ ]] || fail 'BANGUMI_BUILD_JOBS must be a positive integer.'
 [[ "$BANGUMI_ANDROID_ABI" == arm64-v8a ]] || \
-  fail 'Only arm64-v8a is implemented; the x86_64 emulator build interface is reserved, not enabled.'
+  fail 'Only arm64-v8a Android devices are supported.'
 
 prepare_runtime() {
-  node /usr/local/lib/bangumi/prepare-workspace.cjs check
-  node /usr/local/lib/bangumi/prepare-workspace.cjs sync
+  node /usr/local/lib/bangumi/prepare-project.cjs check
   [[ -f android/gradlew && -f android/rust/Cargo.toml ]] || \
     fail 'The Android runtime bind is missing; use docker/compose.yml.'
   local directory
@@ -28,7 +27,7 @@ prepare_runtime() {
     [[ -w "$directory" ]] || fail "Cache is not writable: $directory (check image UID/GID and existing volume ownership)."
   done
 
-  node /usr/local/lib/bangumi/prepare-workspace.cjs configure
+  node /usr/local/lib/bangumi/prepare-project.cjs configure
 }
 
 command="${1:-workbench}"
@@ -37,19 +36,12 @@ case "$command" in
   workbench)
     (( $# == 0 )) || fail 'workbench takes no arguments; open the real repository at /repo.'
     [[ -d /repo/.git ]] || fail 'The complete repository bind is missing; use docker/compose.yml.'
-    source /usr/local/lib/bangumi/adb-server.sh
-    source /usr/local/lib/bangumi/adb-manager.sh
-    bangumi_ensure_adb
-    # Dev Containers' postStartCommand prepares or reuses repository dependencies.
-    cd /repo
+    # postCreate initializes dependencies; the ADB wrapper starts its server on demand.
     exec sleep infinity
     ;;
   metro)
     (( $# == 0 )) || fail 'metro takes no arguments; it serves the loopback development server on 127.0.0.1:8081.'
     prepare_runtime
-    # Metro itself has no device/ADB prerequisite. Old Expo's CI mode disables watching. Non-TTY Compose input already avoids
-    # device shortcuts; the launcher binds only 127.0.0.1:8081 for adb reverse.
-    unset CI
     exec node /usr/local/lib/bangumi/start-metro.cjs
     ;;
   build)
@@ -58,7 +50,7 @@ case "$command" in
     # Serialize Rust and Gradle over the real project directory, without ADB.
     exec 9>android/.gradle/bangumi-build.lock
     flock -n 9 || fail 'Another native build is already using this project.'
-    bash /usr/local/lib/bangumi/build-rust.sh /workspace
+    bash /usr/local/lib/bangumi/build-rust.sh /repo
     cd android
     exec bash ./gradlew --no-daemon --console=plain assembleDebug
     ;;

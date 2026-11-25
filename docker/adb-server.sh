@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # @Author: Q16KBreak
 #
-# 只读探测宿主 ADB smart socket，避免 adb 客户端自动启动或替换共享服务。
+# 只读探测 ADB smart socket，避免客户端自动启动或替换现有服务。
 
 bangumi_adb_server_version() (
   local host="${1:-127.0.0.1}" port="${2:-5037}"

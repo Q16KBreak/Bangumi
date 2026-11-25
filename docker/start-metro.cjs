@@ -8,15 +8,14 @@
 const assert = require('node:assert/strict')
 const path = require('node:path')
 
-// 手机只通过 adb reverse 访问自身的 127.0.0.1:8081；外部旧 LAN 广告环境一律忽略。
+// 手机通过 adb reverse 访问自身的 127.0.0.1:8081。
 process.env.REACT_NATIVE_PACKAGER_HOSTNAME = '127.0.0.1'
-delete process.env.BANGUMI_METRO_HOST
 
 // Expo 49's CI mode disables file watching, not just terminal interaction. Compose
 // uses non-TTY input, so CI is neither necessary nor appropriate for Metro.
 delete process.env.CI
 
-const projectRoot = '/workspace'
+const projectRoot = '/repo'
 const resolveFromProject = request => require.resolve(request, { paths: [projectRoot] })
 const cliPackagePath = resolveFromProject('@expo/cli/package.json')
 const cliPackage = require(cliPackagePath)

@@ -2,7 +2,7 @@
 # 容器内开发入口；编译、设备选择和 Metro 生命周期不依赖 Docker socket。
 set -euo pipefail
 
-BANGUMI_PROJECT_ROOT="${BANGUMI_PROJECT_ROOT:-/workspace}"
+BANGUMI_PROJECT_ROOT="${BANGUMI_PROJECT_ROOT:-/repo}"
 BANGUMI_LIB=/usr/local/lib/bangumi
 BANGUMI_ENTRYPOINT=/usr/local/bin/bangumi-entrypoint
 ADB_BIN=/usr/local/bin/adb
@@ -118,20 +118,6 @@ configure_debug_prefs() {
     fail '写入 Metro 调试偏好失败，不会启动应用。'
   fi
 }
-check_screen_ready() {
-  local serial="$1" power='' policy=''
-  power="$("$ADB_BIN" -s "$serial" shell dumpsys power 2>/dev/null)" || power=''
-  policy="$("$ADB_BIN" -s "$serial" shell dumpsys window policy 2>/dev/null)" || policy=''
-  if [[ -z "$power" && -z "$policy" ]]; then
-    printf '提示：无法读取手机屏幕/锁屏状态；请确认已亮屏解锁。\n' >&2
-  elif [[ "$power" == *mWakefulness=Asleep* || "$power" == *mWakefulness=Dreaming* || \
-          "$power" == *mWakefulness=Dozing* || "$policy" == *showing=true* || \
-          "$policy" == *mShowingLockscreen=true* || "$policy" == *mDreamingLockscreen=true* ]]; then
-    printf '警告：手机可能处于休眠、锁屏或 Doze 状态，请亮屏解锁。\n' >&2
-  fi
-  printf '提示：请让手机保持前台亮屏，便于观察 Metro 加载与热更新。\n' >&2
-}
-
 metro_state_dir() {
   local state="/tmp/bangumi-dev-$(id -u)"
   [[ ! -L "$state" ]] || fail '状态目录不能是符号链接。'
@@ -240,7 +226,7 @@ main() {
       check_args "$#" 0 0
       local state
       state="$(metro_state_dir)"
-      exec flock "$state/deps.lock" node "$BANGUMI_LIB/prepare-workspace.cjs" init
+      exec flock "$state/deps.lock" node "$BANGUMI_LIB/prepare-project.cjs" init
       ;;
     build) check_args "$#" 0 0; check_abi_config; exec "$BANGUMI_ENTRYPOINT" build ;;
     metro) check_args "$#" 0 0; check_abi_config; exec "$BANGUMI_ENTRYPOINT" metro ;;
@@ -274,7 +260,6 @@ main() {
           install_apk "$serial"
           configure_debug_prefs "$serial"
           "$ADB_BIN" -s "$serial" reverse tcp:8081 tcp:8081 || fail '建立 Metro 反向端口失败，不会启动应用。'
-          check_screen_ready "$serial"
           "$ADB_BIN" -s "$serial" shell am start -W -n "$COMPONENT"
           printf '已启动开发包：%s；Metro 通过 adb reverse 访问 127.0.0.1:8081。\n' "$serial"
           ;;

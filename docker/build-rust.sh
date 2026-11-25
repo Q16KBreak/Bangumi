@@ -2,13 +2,13 @@
 # Bangumi ECH Proxy - Linux 容器内交叉编译（OpenSSL ECH + Rust JNI）。
 #
 # 用法:
-#   bash /usr/local/lib/bangumi/build-rust.sh [PROJECT_ROOT]   # 默认 /workspace
+#   bash /usr/local/lib/bangumi/build-rust.sh [PROJECT_ROOT]   # 默认 /repo
 #
 # Rust、cargo-ndk 和 Rust NDK 由镜像提供；这里只编译，不安装工具链。
 set -Eeuo pipefail
 
 OPENSSL_VERSION=4.0.1
-PROJECT_ROOT="${1:-/workspace}"
+PROJECT_ROOT="${1:-/repo}"
 RUST_DIR="$PROJECT_ROOT/android/rust"
 JNILIBS_DIR="$PROJECT_ROOT/android/app/src/main/jniLibs/arm64-v8a"
 OPENSSL_ROOT="$RUST_DIR/openssl"

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # 一体化 Android 开发环境；源码、项目依赖与产物在运行时挂载。
-# 固定工具版本集中于下方 ARG；独立验收流程不参与镜像安装。
+# 固定工具版本集中于下方 ARG。
 ARG BASE_IMAGE=debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
 ARG JDK_VERSION=17
 ARG NODE_VERSION=26.13.1
@@ -31,7 +31,7 @@ RUN --mount=type=cache,id=bangumi-android-apt-cache,target=/var/cache/apt,sharin
        bash build-essential ca-certificates curl git "openjdk-${JDK_VERSION}-jdk-headless" \
        perl pkg-config python3 unzip util-linux xz-utils zip
 
-# Node：镜像配置阶段和最终开发镜像都复用此阶段。
+# Node
 FROM base AS node
 ARG NODE_VERSION
 RUN --mount=type=tmpfs,target=/tmp/bangumi \
@@ -99,19 +99,6 @@ RUN --mount=type=tmpfs,target=/tmp/bangumi \
     && mkdir -p /opt/cargo-ndk \
     && tar -xzf /tmp/bangumi/cargo-ndk.tgz -C /opt/cargo-ndk --strip-components=1
 
-# Android 配置独立生成，不切换宿主默认的 iOS 环境。
-FROM node AS android-config
-WORKDIR /configuration
-COPY packages/env.js ./packages/env.js
-COPY packages/android/package.json ./packages/android/package.json
-COPY packages/android/patches/ ./packages/android/patches/
-COPY packages/patches/react-native-android-widget+0.5.2.patch \
-     packages/patches/react-native-pager-view+6.2.0.patch \
-     packages/patches/react-native-realtimeblurview+1.1.3.patch \
-     packages/patches/react-native-smb+0.2.4.patch ./packages/patches/
-COPY babel.config.js app.json ./
-RUN node packages/env.js android
-
 # 开发用户与运行入口。项目 node_modules 由容器初始化写入真实仓库。
 FROM base AS dev
 ARG LOCAL_UID=1000
@@ -134,7 +121,6 @@ ENV HOME=/home/dev \
     CI=1 \
     EXPO_NO_TELEMETRY=1 \
     BANGUMI_CONTAINER=1 \
-    BANGUMI_ADB_SERVER_MODE=container \
     BANGUMI_ANDROID_ABI=arm64-v8a \
     BANGUMI_ANDROID_BUILD_TOOLS=${ANDROID_BUILD_TOOLS} \
     BANGUMI_CMAKE_DIR=/opt/android-sdk/cmake/${ANDROID_CMAKE} \
@@ -155,13 +141,8 @@ RUN ln -s /opt/yarn/bin/yarn /usr/local/bin/yarn \
     && install -d -m 0755 /usr/local/lib/bangumi \
     && install -d -o "$LOCAL_UID" -g "$LOCAL_GID" \
        /home/dev/.gradle /home/dev/.cargo /home/dev/.cargo/registry /home/dev/.cargo/git \
-       /home/dev/.cache /home/dev/.cache/yarn /home/dev/.android /workspace /repo
+       /home/dev/.cache /home/dev/.cache/yarn /home/dev/.android /repo
 
-COPY --from=android-config /configuration/package.json /workspace/package.json
-COPY --from=android-config /configuration/babel.config.js /configuration/app.json /workspace/
-COPY --from=android-config /configuration/patches/ /workspace/patches/
-COPY --from=android-config /configuration/packages/patches/ /workspace/packages/patches/
-COPY eslint-rules/ /workspace/eslint-rules/
 COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/bangumi-entrypoint
 COPY --chmod=0755 docker/develop.sh /usr/local/bin/bangumi
 COPY --chmod=0755 docker/adb.sh /usr/local/bin/adb
@@ -170,7 +151,7 @@ COPY --chmod=0644 docker/adb-server.sh /usr/local/lib/bangumi/adb-server.sh
 COPY --chmod=0644 docker/start-metro.cjs /usr/local/lib/bangumi/start-metro.cjs
 COPY --chmod=0644 docker/configure-debug-host.py /usr/local/lib/bangumi/configure-debug-host.py
 COPY --chmod=0644 docker/build-rust.sh /usr/local/lib/bangumi/build-rust.sh
-COPY --chmod=0644 docker/prepare-workspace.cjs /usr/local/lib/bangumi/prepare-workspace.cjs
+COPY --chmod=0644 docker/prepare-project.cjs /usr/local/lib/bangumi/prepare-project.cjs
 
 WORKDIR /repo
 USER dev

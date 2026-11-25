@@ -9,8 +9,8 @@
   "overrideCommand": false,
   "shutdownAction": "stopCompose",
   "initializeCommand": ["bash", "${localWorkspaceFolder}/docker/devcontainer-host.sh"],
-  "postStartCommand": "/usr/local/bin/bangumi init",
-  "waitFor": "postStartCommand",
+  "postCreateCommand": "/usr/local/bin/bangumi init",
+  "waitFor": "postCreateCommand",
   "customizations": {
     "vscode": {
       "extensions": [

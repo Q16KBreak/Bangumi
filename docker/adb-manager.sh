@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ADB 服务仅绑定回环；容器模式只管理自己启动的前台 server。
+# ADB 服务仅绑定回环，只管理本容器启动的前台 server。
 
 BANGUMI_ADB_REAL=/opt/android-sdk/platform-tools/adb
 export ADB_SERVER_SOCKET=tcp:127.0.0.1:5037
@@ -76,19 +76,8 @@ bangumi_adb_process_start() {
 }
 
 bangumi_ensure_adb() {
-  local mode="${BANGUMI_ADB_SERVER_MODE:-container}" state protocol rc pid start i
+  local state protocol rc pid start i
   [[ "${BANGUMI_CONTAINER:-}" == 1 ]] || { bangumi_adb_fail '只能在 Bangumi 开发容器中使用。'; return 1; }
-  case "$mode" in
-    host)
-      protocol="$(bangumi_adb_server_version 127.0.0.1 5037)" || {
-        bangumi_adb_fail '宿主 ADB server 不可用；host 模式不会启动或替换它。'; return 1;
-      }
-      [[ "$protocol" == 41 ]] || { bangumi_adb_fail '宿主 ADB 协议不兼容（需要 41）；不会替换服务。'; return 1; }
-      return 0
-      ;;
-    container) ;;
-    *) bangumi_adb_fail 'BANGUMI_ADB_SERVER_MODE 只能为 container 或 host。'; return 1 ;;
-  esac
 
   state="$(bangumi_adb_state_dir)" || return 1
   (
@@ -111,7 +100,7 @@ bangumi_ensure_adb() {
     fi
 
     if protocol="$(bangumi_adb_server_version 127.0.0.1 5037)"; then
-      bangumi_adb_fail '5037 已被非本容器 ADB 服务占用；如需共用宿主设备，请选择 host 模式重建容器。'
+      bangumi_adb_fail '5037 已被非本容器 ADB 服务占用；请确认并自行处理现有服务。'
       exit 1
     else
       rc=$?
