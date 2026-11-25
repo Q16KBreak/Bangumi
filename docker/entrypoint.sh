@@ -9,7 +9,6 @@ fail() { printf '[bangumi] %s\n' "$*" >&2; exit 1; }
 [[ "${BANGUMI_CONTAINER:-}" == 1 && "$(id -u)" != 0 ]] || \
   fail 'Run as the non-root Dev Container user, not on the host.'
 cd /repo
-export ADB_SERVER_SOCKET=tcp:127.0.0.1:5037
 export BANGUMI_BUILD_JOBS="${BANGUMI_BUILD_JOBS:-4}"
 export BANGUMI_ANDROID_ABI="${BANGUMI_ANDROID_ABI:-arm64-v8a}"
 [[ "$BANGUMI_BUILD_JOBS" =~ ^[1-9][0-9]*$ ]] || fail 'BANGUMI_BUILD_JOBS must be a positive integer.'
@@ -30,7 +29,7 @@ case "$command" in
   workbench)
     (( $# == 0 )) || fail 'workbench takes no arguments; open the real repository at /repo.'
     [[ -d /repo/.git ]] || fail 'The complete repository bind is missing; use docker/compose.yml.'
-    # postCreate initializes dependencies; the ADB wrapper starts its server on demand.
+    # postCreate initializes dependencies; adb starts its server on demand.
     exec sleep infinity
     ;;
   metro)

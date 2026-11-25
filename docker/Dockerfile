@@ -117,7 +117,6 @@ ENV HOME=/home/dev \
     ANDROID_NDK_ROOT=/opt/android-sdk/ndk/${RUST_NDK_VERSION} \
     GRADLE_USER_HOME=/home/dev/.gradle \
     XDG_CACHE_HOME=/home/dev/.cache \
-    ADB_SERVER_SOCKET=tcp:127.0.0.1:5037 \
     CI=1 \
     EXPO_NO_TELEMETRY=1 \
     BANGUMI_CONTAINER=1 \
@@ -146,8 +145,6 @@ RUN ln -s /opt/yarn/bin/yarn /usr/local/bin/yarn \
 COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/bangumi-entrypoint
 COPY --chmod=0755 docker/develop.sh /usr/local/bin/bangumi
 COPY --chmod=0755 docker/adb.sh /usr/local/bin/adb
-COPY --chmod=0644 docker/adb-manager.sh /usr/local/lib/bangumi/adb-manager.sh
-COPY --chmod=0644 docker/adb-server.sh /usr/local/lib/bangumi/adb-server.sh
 COPY --chmod=0644 docker/start-metro.cjs /usr/local/lib/bangumi/start-metro.cjs
 COPY --chmod=0644 docker/configure-debug-host.py /usr/local/lib/bangumi/configure-debug-host.py
 COPY --chmod=0644 docker/build-rust.sh /usr/local/lib/bangumi/build-rust.sh

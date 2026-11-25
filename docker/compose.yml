@@ -11,7 +11,6 @@ services:
     user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     working_dir: /repo
     init: true
-    network_mode: host
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
@@ -19,7 +18,6 @@ services:
       BANGUMI_CONTAINER: "1"
       BANGUMI_ANDROID_ABI: ${BANGUMI_ANDROID_ABI:-arm64-v8a}
       BANGUMI_BUILD_JOBS: ${BANGUMI_BUILD_JOBS:-4}
-      ADB_SERVER_SOCKET: tcp:127.0.0.1:5037
     command: [workbench]
     volumes:
       # The real repository, including Git and project-generated files.
@@ -34,6 +32,10 @@ services:
       - cargo-git:/home/dev/.cargo/git
       - yarn-cache:/home/dev/.cache/yarn
       - adb-state:/home/dev/.android
+
+networks:
+  default:
+    driver: bridge
 
 volumes:
   gradle-home:
