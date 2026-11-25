@@ -27,7 +27,6 @@
 | [start-metro.cjs](<start-metro.cjs>) | 旧 Expo CLI 回环绑定与 watch 适配 |
 | [build-rust.sh](<build-rust.sh>) | 容器 Linux OpenSSL/Rust/JNI 构建，使用预装工具 |
 | [configure-debug-host.py](<configure-debug-host.py>) | 仅转换开发包私有调试地址 |
-| [tests/](<tests/>) | Python 标准库、Node 内置 test/VM mock 回归 |
 
 ## 不要破坏的一体化架构
 
@@ -38,7 +37,7 @@
 - 语言服务使用 Android 依赖，根清单仍是 iOS 默认；不运行根 `yarn env` 或直接根项目启动脚本，不承诺全量类型零错误或未经验证的断点调试。完整仓库中未跟踪和忽略的敏感文件对容器/扩展可见；不承诺 VS Code 不会按个人配置共享凭据。
 - RN 与 Rust/OpenSSL 分别使用 NDK 23.1 和 30.0；以 Dockerfile、构建入口和工程配置为准。保留 Rust 的 `no-shared`、线程检查和 Cargo `--locked`；OpenSSL 缓存标记须跟随 NDK 路径与 OpenSSL 版本，升级不能误复用旧编译器产物。
 - Build Tools 统一为 30.0.3，生产 SDK 仅安装这一版，不再设置 legacy 或分配不同模块使用 37。正常原生配置由准备器生成，标准本地属性选择 SDK/CMake，Gradle 属性提供统一的根 Build Tools 版本；保留用户自管配置，不为了测试修改依赖源码或注入 CMake 策略绕过。JDK 25/21 与 CMake 4 已有实际失败证据，不在 Dockerfile/入口增加版本组合预检。
-- 工具链的真实升级验收仅显式运行 `tests/` 中独立流程；不得塞入 Dockerfile、生产入口或普通 postStart。官方 Features 必须先评估构建期依赖、重复安装、PATH/缓存及隐含权限，不默认放宽现有安全配置。
+- 独立测试与升级验收探针已按用户要求移除；不要把验证代码塞入 Dockerfile、生产入口或普通 postStart，也不要将实际的端口/PID/设备/依赖保护误删为测试。官方 Features 必须先评估构建期依赖、重复安装、PATH/缓存及隐含权限，不默认放宽现有安全配置。
 
 ## ADB、手机与网络
 
@@ -52,16 +51,17 @@
 
 在 VS Code 容器终端使用 `bangumi init/build/up/metro/devices/start/install/logs/down` 或交互 `adb pair`。`bangumi down` 仅停止自己管理的 Metro；关闭 VS Code 按 Dev Container 配置停止 Compose，保留仓库和卷，不影响 host 模式下的宿主 ADB。旧双容器迁移先保存代码、只停止旧 `editor`，不清旧镜像或卷。
 
-先做与修改相关的静态/mock 检查，不安装宿主项目依赖；以下不触碰真实设备：
+独立测试源码已移除。先做与修改相关的语法/配置检查，不安装宿主项目依赖；以下不触碰真实设备：
 
 ```bash
-python3 -B -m unittest discover -s docker/tests -p 'test_*.py' -v
-node --test docker/tests/test_*.cjs
 (for script in docker/*.sh; do bash -n "$script" || exit; done)
+node --check docker/prepare-workspace.cjs
+node --check docker/start-metro.cjs
+python3 -B -c "import ast, pathlib; ast.parse(pathlib.Path('docker/configure-debug-host.py').read_text())"
 docker compose -f docker/compose.yml config --quiet
 ```
 
-- 配置测试应覆盖单服务、真实仓库与运行视图、五卷、无 Compose build、输入指纹/UID 和项目名、旧依赖拒绝/受管复用、ADB 归属及端口冲突；不启动真实 Docker 或设备的 mock 不能视为真机验收。
+- 保持单服务、真实仓库与运行视图、五卷、无 Compose build、输入指纹/UID 和项目名、未知依赖拒绝/受管复用及 ADB/Metro 归属保护；语法/配置通过不能视为镜像或真机验收。
 - 工具链 Dockerfile、运行脚本和指纹输入保持一致；变更会触发镜像更新，不能把源码或私密配置无故加进构建上下文。不要把构建安装塞回单独 COPY 的安装脚本。
 - 真实镜像/原生构建按当次授权执行；日志中区分依赖安装、缓存命中和实际编译。真机区分 Metro `/status`、实际 JS 冷启动和不重装热更新；必要时核对原生 PID。
 - `validation/` 为忽略的历史实验，不自动运行。临时探针必须撤回；[验收记录](<VERIFICATION.md>)只记录本轮实际结果，后续锁刷新、原生同步及业务/发布真机回归由用户自理。

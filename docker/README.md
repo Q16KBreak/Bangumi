@@ -1,8 +1,47 @@
 # Bangumi Android：VS Code 单容器开发
 
-**本版已在隔离源码副本通过镜像、工作台/ADB、原生 APK 构建和 Metro 实际打包；正式仓库依赖准备、VS Code 完整重连及新手机冷启动/Fast Refresh 仍待用户验收**。历史双容器或旧手机结果不代表本版真机已验证，见[验收记录](<VERIFICATION.md>)。
+**此前隔离实测覆盖镜像、工作台/ADB、原生 APK 构建和 Metro 打包；最新 master 变基后的镜像重建、正式依赖准备、VS Code 完整重连及新手机冷启动/Fast Refresh 仍待用户验收**。历史结果不代表当前源码或真机已验证，见[验收记录](<VERIFICATION.md>)。
 
 目标是宿主只准备 **VS Code + Dev Containers 扩展、Docker Engine + Buildx/Compose、Git**，在一个容器终端内完成无线 ADB、Metro 和 Android 编译；宿主不需要 Node、ADB、JDK、Rust、Android SDK 或项目依赖。
+
+## 文件职责与启动链路
+
+| 文件 | 作用 |
+| --- | --- |
+| [Dockerfile](<Dockerfile>) | 安装固定版本工具链、生成 Android 配置并组装非 root 开发镜像。 |
+| [Dockerfile.dockerignore](<Dockerfile.dockerignore>) | 限制构建上下文，只传必需输入，排除依赖、密钥和本机数据。 |
+| [compose.yml](<compose.yml>) | 定义唯一开发容器、host 网络、仓库挂载和用户级缓存卷。 |
+| [devcontainer-host.sh](<devcontainer-host.sh>) | VS Code 在宿主执行的初始化：计算镜像指纹、复用或构建镜像、生成本机 Compose 覆盖。 |
+| [entrypoint.sh](<entrypoint.sh>) | 容器入口，分派工作台、Metro、原生构建或 Shell。 |
+| [develop.sh](<develop.sh>) | 镜像中的 `bangumi` 命令，串联依赖初始化、Metro、设备选择、安装和日志。 |
+| [prepare-workspace.cjs](<prepare-workspace.cjs>) | 初始化/复用 Android 依赖，应用补丁，同步入口并生成受管 Gradle/SDK 配置。 |
+| [start-metro.cjs](<start-metro.cjs>) | 启动旧 Expo 的 Metro JS 入口，保持回环监听与文件热更新。 |
+| [build-rust.sh](<build-rust.sh>) | 用预装工具编译 OpenSSL/Rust JNI 库并复制到 Android 工程。 |
+| [adb.sh](<adb.sh>) | 镜像中的 `adb` 包装器，限制危险参数并保护交互配对码。 |
+| [adb-manager.sh](<adb-manager.sh>) | 管理容器自己的 ADB Server，核对进程/监听归属，或使用已有宿主后端。 |
+| [adb-server.sh](<adb-server.sh>) | 只读查询 ADB Server 协议，供其他运行脚本调用，不是测试。 |
+| [configure-debug-host.py](<configure-debug-host.py>) | 修改开发包私有调试地址，保留其他应用偏好。 |
+| [android-debug.sh](<android-debug.sh>) | 可选宿主命令转发入口；正常 VS Code 开发不必使用，但它不是测试。 |
+| [.gitignore](<.gitignore>) | 忽略本机生成配置、历史实验数据和 Python 字节码。 |
+| [README.md](<README.md>) | 使用、文件职责和排障说明，不参与执行。 |
+| [AGENTS.md](<AGENTS.md>) | 智能体维护边界，不参与执行。 |
+| [VERIFICATION.md](<VERIFICATION.md>) | 保存历史验收与支持边界，不参与执行。 |
+| [.generated/](<.generated/>) | 本机自动生成的 Compose 配置目录；标准 Dev Container 实际读取它，不能当无用测试删除。 |
+| [validation/](<validation/>) | 被忽略的本机历史实验/日志/依赖缓存，不是启动入口，不随源码发布，也不自动清理。 |
+
+标准入口在 [Dev Container 配置](<../.devcontainer/devcontainer.json>)：
+
+```text
+VS Code → devcontainer-host.sh → 镜像 + Compose 配置
+        → entrypoint.sh workbench → 容器 ADB Server
+        → postStart: bangumi init → develop.sh → prepare-workspace.cjs
+
+bangumi build → entrypoint.sh → build-rust.sh → Gradle
+bangumi up/metro → entrypoint.sh → start-metro.cjs
+bangumi start → 构建/安装 + 调试偏好 + adb reverse + 启动开发包
+```
+
+独立测试与手工升级探针已按精简要求移除，启动/构建所需的运行检查没有删除。删除测试不会让首次工具链下载或项目编译更快，它们原本就不在启动路径中。
 
 ## 1. 准备 Ubuntu 宿主
 
@@ -139,22 +178,6 @@ Build Tools 统一为 30.0.3：工程根属性与 AGP 默认值一致，不再�
 - [Rust Feature](<https://github.com/devcontainers/features/blob/main/src/rust/devcontainer-feature.json>)默认申请 `SYS_PTRACE` 与 `seccomp=unconfined`，还会改变 Cargo/Rustup 路径；不默认采用这些放宽设置。官方集合当前没有对应的 Android SDK、双 NDK 或 cargo-ndk Feature，这些项目特定工具仍自行管理。
 - 本版先保留已实测的 ARG 多阶段安装，不为复用而重复安装工具或扩大权限。将来可独立验证 Features 管理运行时工具的方案，但不能承诺首次构建必然更快或镜像更小。
 
-## 独立工具升级验收
-
-[升级验收脚本](<tests/validate-toolchain.sh>)只供明确授权后的隔离实验，**不会由 Dockerfile、容器入口或普通回归自动执行**。它仅从 Git 已跟踪文件的当前内容新建忽略的工作副本；发现未跟踪的非容器文件时先拒绝，要求明确处理复制范围，不静默遗漏或自动暂存。在副本中安装依赖和编译，并在运行前后核对锁文件；正式仓库的依赖和源码不作为写入目标。
-
-```bash
-# 尝试候选工具，仅做 Gradle 配置阶段；首次会创建并打印 CASE_DIRECTORY。
-CANDIDATE_NODE_VERSION=26.13.1 CANDIDATE_JDK_MAJOR=25 \
-  bash docker/tests/validate-toolchain.sh gradle-help
-
-# 使用同一隔离副本和镜像原有 JDK 做完整构建。
-CANDIDATE_NODE_VERSION=26.13.1 CANDIDATE_JDK_MAJOR=image \
-  bash docker/tests/validate-toolchain.sh build '<CASE_DIRECTORY>'
-```
-
-`CANDIDATE_NODE_VERSION=image`、`CANDIDATE_JDK_MAJOR=image` 表示不覆盖镜像中的对应工具，用于最终镜像复验。每次使用相同副本可复用该副本的依赖和下载缓存，但不会自动同步主工作树之后的源码改动；日志保存在该副本中。生产版本只在实测后提升，配置成功、依赖安装成功或出现 APK 均不能替代手机冷启动与热更新验收；不会为得到通过结果而往生产入口添加测试分支。
-
 ## 排障与维护检查
 
 - **5037 被占用**：先确认已有服务归属；不自动 kill。需共用宿主服务时明确选择 host 模式。
@@ -163,13 +186,14 @@ CANDIDATE_NODE_VERSION=26.13.1 CANDIDATE_JDK_MAJOR=image \
 - **已有 Gradle 配置**：入口不会覆盖手写配置；用户确认并自行处理后重试。
 - **下载或磁盘失败**：保留错误，检查网络和空间；不要关闭 TLS 校验、刷新锁文件或默认清缓存。
 
-维护者在宿主可选执行以下静态/mock 检查，需要 Python 3 和 Node 18+；它们不连接真实设备、不安装项目依赖：
+独立回归源码已移除。维护者在具备相应工具的宿主或开发环境中可做以下语法/配置检查；它们不是日常启动前置条件，不连接设备，也不安装依赖：
 
 ```bash
-python3 -B -m unittest discover -s docker/tests -p 'test_*.py' -v
-node --test docker/tests/test_*.cjs
 (for script in docker/*.sh; do bash -n "$script" || exit; done)
+node --check docker/prepare-workspace.cjs
+node --check docker/start-metro.cjs
+python3 -B -c "import ast, pathlib; ast.parse(pathlib.Path('docker/configure-debug-host.py').read_text())"
 docker compose -f docker/compose.yml config --quiet
 ```
 
-真实镜像构建、容器重开和手机测试必须单独报告结果；静态/mock 通过不等同实际环境验收。官方参考：[Dev Containers](<https://code.visualstudio.com/docs/devcontainers/containers>)、[ADB 无线调试](<https://developer.android.com/tools/adb>)、[Docker host 网络](<https://docs.docker.com/engine/network/drivers/host/>)。
+真实镜像构建、容器重开和手机测试必须单独报告结果；语法/配置通过不等同实际环境验收。官方参考：[Dev Containers](<https://code.visualstudio.com/docs/devcontainers/containers>)、[ADB 无线调试](<https://developer.android.com/tools/adb>)、[Docker host 网络](<https://docs.docker.com/engine/network/drivers/host/>)。

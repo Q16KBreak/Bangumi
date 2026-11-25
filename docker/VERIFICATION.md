@@ -1,5 +1,11 @@
 # 容器开发验收记录
 
+## 启动目录精简
+
+按用户要求移除不被镜像 COPY、宿主指纹、Dev Container 生命周期或运行入口调用的独立测试目录，包括自动回归、手工工具升级验收和 Gradle 报告探针；同步删除使用说明中的失效入口。实际运行脚本、端口/进程/设备/依赖保护、可选宿主转发入口和自动生成的 Compose 配置均保留，历史实验目录中的依赖、缓存与日志未清理。下文的测试计数和构建结果仅为历史，当前目录不再附带这些独立测试源码，不能宣称本轮重新跑过它们。
+
+此次仅删除独立测试并更新文档，镜像输入与运行脚本不变；使用 Shell/JS/Python 语法、Compose/JSON 配置、启动引用与文档链接检查验证完整性，不安装依赖、不构建镜像或操作手机。
+
 ## 基于最新 master 整理历史
 
 本次以 `origin/master` 的 `5fbbc77ac` 为基底，将此前容器历史折叠并保留四次提交；分支相对 master 的净改动仅在 `docker/` 与 `.devcontainer/`。上游已删除 render-html/tab-view 的两份旧补丁，本目录同步移除对应 COPY、构建白名单、指纹输入与 mock 样例，不还原上游依赖或修改目录外源码。
@@ -18,7 +24,7 @@
 
 升级前回溯点为 `43083f3ce`。用户已明确允许在隔离容器与临时工作副本安装依赖和构建 APK，仍禁止改写锁文件、正式源码及已有依赖；也允许删除本会话未使用的失败过渡镜像。已删除存在脚本目录权限问题的过渡镜像，保留已验证基线镜像和所有既有容器/卷，磁盘恢复至约 30 GiB 可用。
 
-独立验收入口为 [validate-toolchain.sh](<tests/validate-toolchain.sh>)，不会由 Dockerfile 或生产入口调用。它从 Git 跟踪清单复制当前工作树到忽略的独立目录，不使用主仓库旧依赖或忽略的编译产物；项目和用户级构建缓存均隔离，运行前后校验源仓库与副本的锁文件摘要。未连接设备时只验证构建，不宣称真机运行。
+当时使用独立工具升级验收脚本（现已按用户精简要求移除），未由 Dockerfile 或生产入口调用。它从 Git 跟踪清单复制当时工作树到忽略的独立目录，不使用主仓库旧依赖或忽略的编译产物；项目和用户级构建缓存均隔离，运行前后校验源仓库与副本的锁文件摘要。未连接设备时只验证构建，不宣称真机运行。
 
 首个候选为 [Node LTS 26.13.1](<https://nodejs.org/dist/index.json>) 与 [Temurin JDK 25 LTS](<https://api.adoptium.net/v3/assets/latest/25/hotspot?architecture=x64&image_type=jdk&os=linux&vendor=eclipse>)。实际下载后已分别输出 `v26.13.1` 和 `25.0.5.1+2`。Node 26 完成隔离副本的 Yarn 安装（116.74 秒）与六个补丁应用；随后 Gradle 8.0.1 的 `help` 在 JDK 25 下于配置阶段失败，原始错误为 `Unsupported class file major version 69`。源仓库和隔离副本的 Cargo/Pod 锁摘要均保持不变。随后 JDK 21.0.13.1+2 也在同一配置阶段失败，错误为 `Unsupported class file major version 65`。改用镜像中的 Debian OpenJDK 17.0.21.1 后，Node 26 完成 OpenSSL/Rust 与 Android 完整构建：Gradle `BUILD SUCCESSFUL in 14m 4s`，1055 个任务中 762 个执行、293 个来自缓存。产物是 `com.czy0729.bangumi.dev` 的 ARM64 调试包（27,976,961 字节），包含 Rust JNI 库；随后受管 Metro 实际返回了 Android JS bundle（31,021,535 字节），不只是 `/status` 成功。随后 Rust NDK r30（30.0.16248370）在清除隔离原生输出后完成真实重编，并以 50 秒增量重新打包 APK。CMake 4.1.2 用官方本地路径接口实际配置失败（旧 Expo 要求保留已被 4.x 删除的最低版本策略）；未设置策略绕过。官方最高 3.x 的 3.31.6 联同根 Build Tools 属性 37.0.0 完成重新配置和 APK 构建（1 分 22 秒）。三个实际 CMake 模块的缓存均确认使用 3.31.6 与 RN NDK 23.1；独立只读 Gradle 报告确认部分库使用 37，应用及部分库仍为 AGP 默认 30.0.3。已将这些实测选择提升到正式配置，但这些结果不代表手机已安装或冷启动通过。后续以实际构建日志和产物记录成功或失败，不在 Dockerfile/入口增加版本组合检查或测试探针。
 
