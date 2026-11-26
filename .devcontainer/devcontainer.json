@@ -1,6 +1,6 @@
 {
   "name": "Bangumi Android Dev",
-  "dockerComposeFile": ["../docker/compose.yml", "../docker/.generated/compose.yml"],
+  "dockerComposeFile": "../docker/compose.yml",
   "service": "dev",
   "workspaceFolder": "/repo",
   "remoteUser": "dev",

@@ -8,16 +8,11 @@ services:
     image: bangumi-android-dev:local
     pull_policy: never
     platform: linux/amd64
-    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     working_dir: /repo
     init: true
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
-    environment:
-      BANGUMI_CONTAINER: "1"
-      BANGUMI_ANDROID_ABI: ${BANGUMI_ANDROID_ABI:-arm64-v8a}
-      BANGUMI_BUILD_JOBS: ${BANGUMI_BUILD_JOBS:-4}
     command: [workbench]
     volumes:
       # The real repository, including Git and project-generated files.

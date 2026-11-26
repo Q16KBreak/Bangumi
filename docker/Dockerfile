@@ -123,10 +123,8 @@ ENV HOME=/home/dev \
     ANDROID_NDK_ROOT=/opt/android-sdk/ndk/${RUST_NDK_VERSION} \
     GRADLE_USER_HOME=/home/dev/.gradle \
     XDG_CACHE_HOME=/home/dev/.cache \
-    CI=1 \
+    YARN_CACHE_FOLDER=/home/dev/.cache/yarn \
     EXPO_NO_TELEMETRY=1 \
-    BANGUMI_CONTAINER=1 \
-    BANGUMI_ANDROID_ABI=arm64-v8a \
     BANGUMI_BUILD_JOBS=4
 ENV PATH=/usr/local/bin:/opt/cargo/bin:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:/opt/android-sdk/cmake/${ANDROID_CMAKE}/bin:${JAVA_HOME}/bin:${PATH}
 
@@ -138,7 +136,7 @@ COPY --from=rust /opt/rustup/ /opt/rustup/
 COPY --from=cargo-ndk /opt/cargo-ndk/ /opt/cargo/bin/
 RUN ln -s /opt/yarn/bin/yarn /usr/local/bin/yarn \
     && ln -s /opt/yarn/bin/yarnpkg /usr/local/bin/yarnpkg \
-    && if ! getent group "$LOCAL_GID" >/dev/null; then groupadd --gid "$LOCAL_GID" dev; fi \
+    && groupadd --force --gid "$LOCAL_GID" dev \
     && useradd --uid "$LOCAL_UID" --gid "$LOCAL_GID" --create-home --shell /bin/bash dev \
     && install -d -m 0755 /usr/local/lib/bangumi \
     && install -d -o "$LOCAL_UID" -g "$LOCAL_GID" \
@@ -151,8 +149,6 @@ ENV BANGUMI_OPENSSL_VERSION=${OPENSSL_VERSION}
 
 COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/bangumi-entrypoint
 COPY --chmod=0755 docker/develop.sh /usr/local/bin/bangumi
-COPY --chmod=0644 docker/start-metro.cjs /usr/local/lib/bangumi/start-metro.cjs
-COPY --chmod=0644 docker/configure-debug-host.py /usr/local/lib/bangumi/configure-debug-host.py
 COPY --chmod=0644 docker/build-rust.sh /usr/local/lib/bangumi/build-rust.sh
 COPY --chmod=0644 docker/prepare-project.cjs /usr/local/lib/bangumi/prepare-project.cjs
 

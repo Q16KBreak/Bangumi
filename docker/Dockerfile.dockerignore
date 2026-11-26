@@ -8,9 +8,7 @@ docker/**
 !docker/Dockerfile.dockerignore
 !docker/entrypoint.sh
 !docker/develop.sh
-!docker/start-metro.cjs
 !docker/prepare-project.cjs
-!docker/configure-debug-host.py
 !docker/build-rust.sh
 
 # Defense in depth if the whitelist is extended later.

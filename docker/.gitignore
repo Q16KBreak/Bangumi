@@ -2,5 +2,5 @@
 __pycache__/
 # 本机实际构建与真机验收日志。
 validation/
-# 本机 Compose 配置和环境切换中断标记。
+# 旧版生成的本机文件。
 .generated/
