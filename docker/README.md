@@ -22,9 +22,9 @@ code .
 
 在 VS Code 信任自己的仓库，选择 **Dev Containers: Reopen in Container**。宿主初始化使用 Docker 层缓存构建本地镜像，单个容器把真实仓库读写挂载到 `/repo`。首次创建时 VS Code 自动运行并等待 `bangumi init`；普通重开不会重复安装。
 
-**初始化会修改宿主真实仓库。** 容器在 `/repo` 运行现有 `node packages/env.js android`：切换根 [package.json](<../package.json>)、[app.json](<../app.json>)、[babel.config.js](<../babel.config.js>) 和 `patches/` 等配置，iOS 清单备份到 [packages/ios/package.json](<../packages/ios/package.json>)，`node_modules` 可能移动。随后执行 `yarn install --no-lockfile --non-interactive` 并应用补丁；这些变化不是临时副本，也不会自动切回或提交。
+**初始化会修改宿主真实仓库。** 容器在 `/repo` 必要时运行上游 `yarn run env android`：切换根 [package.json](<../package.json>)、[app.json](<../app.json>)、[babel.config.js](<../babel.config.js>) 和 `patches/` 等配置，iOS 清单备份到 [packages/ios/package.json](<../packages/ios/package.json>)，`node_modules` 可能移动。随后执行 `yarn install --no-lockfile --non-interactive` 并应用补丁；这些变化不是临时副本，也不会自动切回或提交。
 
-首次初始化失败时，修复错误后在容器终端执行 `bangumi init`；普通重开不会重试。旧 Android 依赖标记会被识别，避免误备份到 `packages/ios`；未知状态或缓存冲突会保留现场并报错。环境切换中断时先检查根配置和平台缓存，再处理 `docker/.generated/android-switch.pending`，不要盲目重放。
+首次初始化失败时，修复错误后在容器终端执行 `bangumi init`；普通重开不会重试。遇到平台缓存冲突时，初始化会保留现场并报错。环境切换中断时先检查根配置和平台缓存，再处理 `docker/.generated/android-switch.pending`，不要盲目重放。
 
 提交需要默认 iOS 配置的业务变更前，先停止 Metro、构建等占用依赖的任务，再由用户按仓库流程切回 iOS 并检查差异。修改根清单、补丁或 ESLint 插件后，容器内重跑 `bangumi init`；修改 [Dockerfile](<Dockerfile>) 或镜像内运行脚本后，在 VS Code 重建容器。
 
@@ -43,7 +43,7 @@ code .
 | --- | --- |
 | `bangumi init` | 初始化 Android 环境与依赖 |
 | `bangumi start [IP:PORT\|--device SERIAL]` | 构建、安装并启动所选设备 |
-| `bangumi build` | 编译 Rust/ECH 和 Android debug APK，生成原生构建配置 |
+| `bangumi build` | 补齐缺失的 Gradle 配置，编译 Rust/ECH 和 Android debug APK |
 | `bangumi metro` | 前台运行 Metro，不生成原生构建配置 |
 | `bangumi down` | 仅停止 `start` 启动的后台 Metro |
 
@@ -55,7 +55,7 @@ code .
 
 - 设备连不上：检查容器能否访问手机显示的地址及端口。容器重开或手机更换连接端口后，用 `adb connect` 重连；配对身份保留在命名卷中。
 - 8081 被占用：检查容器内的占用进程和所选设备 reverse；脚本不会接管或杀死其他 Metro。
-- 下载或磁盘失败：检查网络和空间，保留错误现场；不要关闭 TLS、刷新锁文件或默认清缓存。已有手写 Gradle 配置由用户确认处理。
+- 下载或磁盘失败：检查网络和空间，保留错误现场；不要关闭 TLS、刷新锁文件或默认清缓存。已有 Gradle 配置不会重写；更换 SDK、CMake 或构建参数时，请确认已有配置仍然适用。
 - Compose 使用独立 bridge 网络，ADB 和 Metro 分别使用容器内的回环 5037 与 8081，不和宿主端口冲突。手机通过所选设备的 adb reverse 访问 Metro，无需发布端口。不启用 privileged、USB 或宿主 Docker socket 挂载。
 - 仅操作开发包的私有调试偏好，不卸载、清数据或修改手机全局设置。完整仓库及其未跟踪或忽略的敏感文件对容器和可信扩展可见；不要假设编辑器不会按个人设置共享凭据。
 - Gradle、Cargo、Yarn 缓存及容器 ADB 身份使用命名卷；项目依赖与原生/Metro 缓存位于真实仓库。不要自动删除已有数据。

@@ -6,7 +6,6 @@
 'use strict'
 
 const assert = require('node:assert/strict')
-const path = require('node:path')
 
 // 手机通过 adb reverse 访问自身的 127.0.0.1:8081。
 process.env.REACT_NATIVE_PACKAGER_HOSTNAME = '127.0.0.1'
@@ -17,21 +16,9 @@ delete process.env.CI
 
 const projectRoot = '/repo'
 const resolveFromProject = request => require.resolve(request, { paths: [projectRoot] })
-const cliPackagePath = resolveFromProject('@expo/cli/package.json')
-const cliPackage = require(cliPackagePath)
-assert.equal(cliPackage.name, '@expo/cli', 'Expected the project-local official Expo CLI package.')
-assert.equal(typeof cliPackage.main, 'string', 'Expo CLI no longer exposes its JavaScript entry.')
-const cliRoot = path.dirname(cliPackagePath)
-const cliEntry = resolveFromProject(path.resolve(cliRoot, cliPackage.main))
-assert.ok(cliEntry.startsWith(`${cliRoot}${path.sep}`), 'Expo CLI entry escaped its own package.')
-
-const serverPath = resolveFromProject('@expo/cli/build/src/start/server/metro/runServer-fork')
-const serverModule = require(serverPath)
-const descriptor = Object.getOwnPropertyDescriptor(serverModule, 'runServer')
-assert.ok(descriptor?.writable, 'Expo runServer export is no longer writable; review this launcher.')
+const cliEntry = resolveFromProject('@expo/cli')
+const serverModule = require(resolveFromProject('@expo/cli/build/src/start/server/metro/runServer-fork'))
 const originalRunServer = serverModule.runServer
-assert.equal(typeof originalRunServer, 'function', 'Expo runServer export is not a function.')
-assert.equal(originalRunServer.length, 3, 'Expo runServer API changed; review this launcher.')
 
 // Patch only this process's one Expo export before the CLI loads instantiateMetro.
 // Reuse the upstream server, middleware, sockets and watchers without touching
@@ -39,8 +26,6 @@ assert.equal(originalRunServer.length, 3, 'Expo runServer API changed; review th
 serverModule.runServer = function (metroBundler, config, options) {
   assert.equal(metroBundler?.projectRoot, projectRoot, 'Unexpected Metro project root.')
   assert.equal(config?.server?.port, 8081, 'This launcher only serves Metro on port 8081.')
-  assert.ok(options && typeof options === 'object', 'Expo runServer options API changed.')
-  assert.equal(typeof options.watch, 'boolean', 'Expo no longer supplies its watch option.')
   return originalRunServer.call(this, metroBundler, config, {
     ...options,
     host: '127.0.0.1',
