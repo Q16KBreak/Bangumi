@@ -43,12 +43,12 @@ case "$command" in
     node /usr/local/lib/bangumi/prepare-project.cjs check
     [[ -f android/gradlew && -f android/rust/Cargo.toml ]] || \
       fail 'The Android runtime bind is missing; use docker/compose.yml.'
+    [[ -f android/gradle.properties ]] || fail 'Gradle configuration is missing; run bangumi init.'
     require_writable_caches "$GRADLE_USER_HOME" "$CARGO_HOME/registry" "$CARGO_HOME/git" \
       android/.gradle android/rust/target android/rust/openssl
     # Serialize Rust and Gradle over the real project directory, without ADB.
     exec 9>android/.gradle/bangumi-build.lock
     flock -n 9 || fail 'Another native build is already using this project.'
-    node /usr/local/lib/bangumi/prepare-project.cjs configure
     bash /usr/local/lib/bangumi/build-rust.sh /repo
     cd android
     exec bash ./gradlew --no-daemon --console=plain assembleDebug

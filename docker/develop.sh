@@ -5,7 +5,7 @@ set -euo pipefail
 BANGUMI_PROJECT_ROOT="${BANGUMI_PROJECT_ROOT:-/repo}"
 BANGUMI_LIB=/usr/local/lib/bangumi
 BANGUMI_ENTRYPOINT=/usr/local/bin/bangumi-entrypoint
-ADB_BIN=/usr/local/bin/adb
+ADB_BIN=/opt/android-sdk/platform-tools/adb
 APK="$BANGUMI_PROJECT_ROOT/android/app/build/outputs/apk/debug/app-arm64-v8a-debug.apk"
 DEBUG_PACKAGE=com.czy0729.bangumi.dev
 DEBUG_PREFS=shared_prefs/com.czy0729.bangumi.dev_preferences.xml

@@ -22,7 +22,7 @@ code .
 
 在 VS Code 信任自己的仓库，选择 **Dev Containers: Reopen in Container**。宿主初始化使用 Docker 层缓存构建本地镜像，单个容器把真实仓库读写挂载到 `/repo`。首次创建时 VS Code 自动运行并等待 `bangumi init`；普通重开不会重复安装。
 
-**初始化会修改宿主真实仓库。** 容器在 `/repo` 必要时运行上游 `yarn run env android`：切换根 [package.json](<../package.json>)、[app.json](<../app.json>)、[babel.config.js](<../babel.config.js>) 和 `patches/` 等配置，iOS 清单备份到 [packages/ios/package.json](<../packages/ios/package.json>)，`node_modules` 可能移动。随后执行 `yarn install --no-lockfile --non-interactive` 并应用补丁；这些变化不是临时副本，也不会自动切回或提交。
+**初始化会修改宿主真实仓库。** 容器在 `/repo` 必要时运行 `node packages/env.js android`：切换根 [package.json](<../package.json>)、[app.json](<../app.json>)、[babel.config.js](<../babel.config.js>) 和 `patches/` 等配置，iOS 清单备份到 [packages/ios/package.json](<../packages/ios/package.json>)，`node_modules` 可能移动。随后执行 `yarn install --no-lockfile --non-interactive` 并应用补丁，再从 [gradle_yours.properties](<../android/gradle_yours.properties>) 补齐缺失的 Gradle 配置，只调整 JDK 17 不兼容的参数并注释发布签名。已有 Gradle 配置不会重写。
 
 首次初始化失败时，修复错误后在容器终端执行 `bangumi init`；普通重开不会重试。遇到平台缓存冲突时，初始化会保留现场并报错。环境切换中断时先检查根配置和平台缓存，再处理 `docker/.generated/android-switch.pending`，不要盲目重放。
 
@@ -41,21 +41,24 @@ code .
 
 | 命令 | 作用 |
 | --- | --- |
-| `bangumi init` | 初始化 Android 环境与依赖 |
+| `bangumi init` | 切换 Android 环境、安装依赖、补齐 Gradle 配置 |
 | `bangumi start [IP:PORT\|--device SERIAL]` | 构建、安装并启动所选设备 |
-| `bangumi build` | 补齐缺失的 Gradle 配置，编译 Rust/ECH 和 Android debug APK |
+| `bangumi build` | 编译 Rust/ECH 和 Android debug APK |
 | `bangumi metro` | 前台运行 Metro，不生成原生构建配置 |
 | `bangumi down` | 仅停止 `start` 启动的后台 Metro |
 
+OpenSSL 源码在构建镜像时下载解压。`bangumi build` 在缓存缺失或 OpenSSL、Rust NDK 版本变更时才编译 OpenSSL，然后构建 Rust/ECH；`bangumi init` 不编译原生库。
+
 `bangumi start` 在设备唯一时可省略 `--device`；多设备必须显式选择或设置 `ANDROID_SERIAL`。只改 JS/TS 时保留 Metro 即可热更新。关闭 VS Code 时容器停止，仓库和命名卷保留。
 
-容器里的 `adb` 由[包装器](<adb.sh>)固定在本地端口，ADB Server 由官方工具按需启动。排查设备用 `adb devices -l`，查看日志用 `adb -s '序列号' logcat`。仅安装已有 APK 可用 `adb -s '序列号' install -r android/app/build/outputs/apk/debug/app-arm64-v8a-debug.apk`。
+容器直接使用 Android SDK 的 `adb`，Server 按需启动；不要用 `adb -a`。排查设备用 `adb devices -l`，查看日志用 `adb -s '序列号' logcat`。仅安装已有 APK 可用 `adb -s '序列号' install -r android/app/build/outputs/apk/debug/app-arm64-v8a-debug.apk`。
 
 ## 排障与安全
 
 - 设备连不上：检查容器能否访问手机显示的地址及端口。容器重开或手机更换连接端口后，用 `adb connect` 重连；配对身份保留在命名卷中。
 - 8081 被占用：检查容器内的占用进程和所选设备 reverse；脚本不会接管或杀死其他 Metro。
-- 下载或磁盘失败：检查网络和空间，保留错误现场；不要关闭 TLS、刷新锁文件或默认清缓存。已有 Gradle 配置不会重写；更换 SDK、CMake 或构建参数时，请确认已有配置仍然适用。
+- 构建使用容器环境中的 SDK 和 CMake 路径。若提示缺少 Gradle 配置，先运行 `bangumi init`。
+- 下载或磁盘失败：检查网络和空间，保留错误现场；不要关闭 TLS、刷新锁文件或默认清缓存。
 - Compose 使用独立 bridge 网络，ADB 和 Metro 分别使用容器内的回环 5037 与 8081，不和宿主端口冲突。手机通过所选设备的 adb reverse 访问 Metro，无需发布端口。不启用 privileged、USB 或宿主 Docker socket 挂载。
 - 仅操作开发包的私有调试偏好，不卸载、清数据或修改手机全局设置。完整仓库及其未跟踪或忽略的敏感文件对容器和可信扩展可见；不要假设编辑器不会按个人设置共享凭据。
 - Gradle、Cargo、Yarn 缓存及容器 ADB 身份使用命名卷；项目依赖与原生/Metro 缓存位于真实仓库。不要自动删除已有数据。

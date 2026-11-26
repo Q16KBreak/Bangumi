@@ -4,15 +4,16 @@
 # 用法:
 #   bash /usr/local/lib/bangumi/build-rust.sh [PROJECT_ROOT]   # 默认 /repo
 #
-# Rust、cargo-ndk 和 Rust NDK 由镜像提供；这里只编译，不安装工具链。
+# Rust、cargo-ndk、Rust NDK 和 OpenSSL 源码由镜像提供。
 set -Eeuo pipefail
 
-OPENSSL_VERSION=4.0.1
+OPENSSL_VERSION="${BANGUMI_OPENSSL_VERSION:?Use the rebuilt Bangumi development image}"
 PROJECT_ROOT="${1:-/repo}"
 RUST_DIR="$PROJECT_ROOT/android/rust"
 JNILIBS_DIR="$PROJECT_ROOT/android/app/src/main/jniLibs/arm64-v8a"
 OPENSSL_ROOT="$RUST_DIR/openssl"
-OPENSSL_SRC="$OPENSSL_ROOT/build/openssl-$OPENSSL_VERSION"
+OPENSSL_SRC=/opt/openssl-src
+OPENSSL_BUILD="$OPENSSL_ROOT/objects"
 OPENSSL_PREFIX="$OPENSSL_ROOT/install"
 # 使用镜像指定的 Rust NDK，独立于 Gradle 的 RN NDK。
 NDK="$ANDROID_NDK_HOME"
@@ -48,6 +49,7 @@ fi
 if [ -f "$OPENSSL_PREFIX/lib/libssl.a" ] && [ -f "$OPENSSL_PREFIX/.threads-ok" ] && [ "$cached_toolchain" = "$OPENSSL_CACHE_KEY" ]; then
   log "OpenSSL 已编译且 threads 已校验, 复用缓存"
 else
+  [ -f "$OPENSSL_SRC/Configure" ] || die 'OpenSSL 源码缺失，请重建开发镜像'
   # 先失效旧成功状态，失败或中断后不能误认被覆盖的库仍属于旧工具链。
   cache_prefix="$(realpath -m -- "$OPENSSL_PREFIX")"
   for marker in .threads-ok .toolchain; do
@@ -55,24 +57,15 @@ else
       || die "OpenSSL 缓存标记路径异常: $OPENSSL_PREFIX/$marker"
   done
   rm -f -- "$OPENSSL_PREFIX/.threads-ok" "$OPENSSL_PREFIX/.toolchain"
-  if [ ! -f "$OPENSSL_SRC/Configure" ]; then
-    log "下载 OpenSSL $OPENSSL_VERSION ..."
-    mkdir -p "$OPENSSL_ROOT/build"
-    if ! curl --fail --location \
-      "https://github.com/openssl/openssl/releases/download/openssl-$OPENSSL_VERSION/openssl-$OPENSSL_VERSION.tar.gz" \
-      | tar xz -C "$OPENSSL_ROOT/build"; then
-      die "OpenSSL 下载或解压失败"
-    fi
-  fi
 
   log "编译 OpenSSL $OPENSSL_VERSION (android-arm64, API 21, threads) ..."
-  mkdir -p "$OPENSSL_PREFIX"
+  mkdir -p "$OPENSSL_BUILD" "$OPENSSL_PREFIX"
   # 独立子 shell: 不加 || 判断, 让 set -e 在 Configure/make 失败时直接传播。
   (
-    cd "$OPENSSL_SRC"
+    cd "$OPENSSL_BUILD"
     # 不能传 -static: OpenSSL 4.0 会因此隐式 disable threads, 并发代理必崩;
     # 静态库能力由 no-shared + OPENSSL_STATIC=1 保证。
-    ./Configure android-arm64 -D__ANDROID_API__=21 \
+    "$OPENSSL_SRC/Configure" android-arm64 -D__ANDROID_API__=21 \
       --prefix="$OPENSSL_PREFIX" \
       --openssldir="$OPENSSL_PREFIX" \
       no-shared \

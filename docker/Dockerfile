@@ -7,7 +7,7 @@ ARG NODE_VERSION=26.13.1
 ARG YARN_VERSION=1.22.22
 ARG ANDROID_TOOLS_BUILD=16111833
 ARG ANDROID_API=34
-ARG ANDROID_BUILD_TOOLS=30.0.3
+ARG ANDROID_BUILD_TOOLS=33.0.0
 ARG ANDROID_CMAKE=3.31.6
 ARG RN_NDK_VERSION=23.1.7779620
 ARG RUST_NDK_VERSION=30.0.16248370
@@ -15,6 +15,7 @@ ARG PLATFORM_TOOLS_VERSION=37.0.3
 ARG RUSTUP_VERSION=1.29.3
 ARG RUST_VERSION=1.100.0
 ARG CARGO_NDK_VERSION=4.1.2
+ARG OPENSSL_VERSION=4.0.1
 
 # 系统工具 / JDK：其余下载阶段仅继承这层，而不互相依赖。
 FROM --platform=linux/amd64 ${BASE_IMAGE} AS base
@@ -99,11 +100,16 @@ RUN --mount=type=tmpfs,target=/tmp/bangumi \
     && mkdir -p /opt/cargo-ndk \
     && tar -xzf /tmp/bangumi/cargo-ndk.tgz -C /opt/cargo-ndk --strip-components=1
 
+FROM base AS openssl-source
+ARG OPENSSL_VERSION
+RUN mkdir -p /opt/openssl-src \
+    && curl -fsSL "https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz" \
+    | tar -xz -C /opt/openssl-src --strip-components=1
+
 # 开发用户与运行入口。项目 node_modules 由容器初始化写入真实仓库。
 FROM base AS dev
 ARG LOCAL_UID=1000
 ARG LOCAL_GID=1000
-ARG ANDROID_BUILD_TOOLS
 ARG ANDROID_CMAKE
 ARG RUST_NDK_VERSION
 ARG RUST_VERSION
@@ -121,10 +127,7 @@ ENV HOME=/home/dev \
     EXPO_NO_TELEMETRY=1 \
     BANGUMI_CONTAINER=1 \
     BANGUMI_ANDROID_ABI=arm64-v8a \
-    BANGUMI_ANDROID_BUILD_TOOLS=${ANDROID_BUILD_TOOLS} \
-    BANGUMI_CMAKE_DIR=/opt/android-sdk/cmake/${ANDROID_CMAKE} \
     BANGUMI_BUILD_JOBS=4
-# /usr/local/bin 优先以便使用项目 ADB 客户端包装器。
 ENV PATH=/usr/local/bin:/opt/cargo/bin:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:/opt/android-sdk/cmake/${ANDROID_CMAKE}/bin:${JAVA_HOME}/bin:${PATH}
 
 COPY --from=node /usr/local/ /usr/local/
@@ -142,9 +145,12 @@ RUN ln -s /opt/yarn/bin/yarn /usr/local/bin/yarn \
        /home/dev/.gradle /home/dev/.cargo /home/dev/.cargo/registry /home/dev/.cargo/git \
        /home/dev/.cache /home/dev/.cache/yarn /home/dev/.android /repo
 
+COPY --from=openssl-source /opt/openssl-src/ /opt/openssl-src/
+ARG OPENSSL_VERSION
+ENV BANGUMI_OPENSSL_VERSION=${OPENSSL_VERSION}
+
 COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/bangumi-entrypoint
 COPY --chmod=0755 docker/develop.sh /usr/local/bin/bangumi
-COPY --chmod=0755 docker/adb.sh /usr/local/bin/adb
 COPY --chmod=0644 docker/start-metro.cjs /usr/local/lib/bangumi/start-metro.cjs
 COPY --chmod=0644 docker/configure-debug-host.py /usr/local/lib/bangumi/configure-debug-host.py
 COPY --chmod=0644 docker/build-rust.sh /usr/local/lib/bangumi/build-rust.sh

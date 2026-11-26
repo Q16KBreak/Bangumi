@@ -8,7 +8,6 @@ docker/**
 !docker/Dockerfile.dockerignore
 !docker/entrypoint.sh
 !docker/develop.sh
-!docker/adb.sh
 !docker/start-metro.cjs
 !docker/prepare-project.cjs
 !docker/configure-debug-host.py
